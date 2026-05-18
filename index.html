@@ -325,6 +325,36 @@
         </div>
       </section>
 
+      <!-- Virtuous loop (the why) -->
+      <section v-if="data.meta.virtuous_loop" class="space-y-4 sm:space-y-5">
+        <div class="grid lg:grid-cols-[1fr_2fr] gap-4 sm:gap-6 items-start">
+          <div>
+            <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">The loop</p>
+            <h2 class="serif text-2xl sm:text-3xl lg:text-4xl mt-2 text-black leading-[1.05]">{{ data.meta.virtuous_loop.title }}</h2>
+          </div>
+          <p class="text-base sm:text-[1.05rem] text-[#252525] leading-relaxed">{{ data.meta.virtuous_loop.lead }}</p>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 relative">
+          <template v-for="(phase, i) in data.meta.virtuous_loop.phases" :key="phase.label">
+            <article :class="['relative rounded-2xl border p-5 overflow-hidden tile', loopCardClass(phase.tone)]">
+              <div class="corner-tr" :style="phase.tone === 'human' || phase.tone === 'mixed' ? '' : 'border-color: rgba(255,255,255,0.18);'"></div>
+              <div class="flex items-baseline justify-between gap-2 mb-2">
+                <p :class="['text-[0.6rem] uppercase tracking-wider font-medium', loopLabelClass(phase.tone)]">{{ phase.label }}</p>
+                <span :class="['serif italic text-xl leading-none', loopAccentClass(phase.tone)]">{{ String(i+1).padStart(2,'0') }}</span>
+              </div>
+              <h3 :class="['serif text-base sm:text-lg mb-3 leading-tight', phase.tone === 'human' || phase.tone === 'mixed' ? 'text-black' : 'text-white']">{{ phase.title }}</h3>
+              <p :class="['text-xs sm:text-sm leading-snug', phase.tone === 'human' || phase.tone === 'mixed' ? 'text-[#252525]' : 'text-white/90']">{{ phase.body }}</p>
+              <div v-if="i < data.meta.virtuous_loop.phases.length - 1" class="hidden lg:flex absolute -right-2 top-1/2 -translate-y-1/2 z-10 items-center justify-center pointer-events-none">
+                <svg class="h-4 w-4" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M2 8 H12" stroke="#ff5a24" stroke-width="1.5" stroke-linecap="round"/>
+                  <path d="M9 5 L13 8 L9 11" stroke="#ff5a24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+                </svg>
+              </div>
+            </article>
+          </template>
+        </div>
+      </section>
+
       <!-- Chain Break Simulator -->
       <article class="relative rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] overflow-hidden">
         <div class="corner-tr"></div>
@@ -405,10 +435,14 @@
             v-for="(a, i) in data.approaches"
             :key="a.id"
             @click="goToApproach(a.id)"
-            class="text-left relative rounded-xl border border-black/10 bg-white/85 p-5 shadow-[0_10px_24px_rgba(0,0,0,0.04)] hover:shadow-[0_18px_38px_rgba(0,0,0,0.08)] transition"
+            class="text-left relative rounded-xl border border-black/10 bg-white/85 p-5 shadow-[0_10px_24px_rgba(0,0,0,0.04)] hover:shadow-[0_18px_38px_rgba(0,0,0,0.08)] transition overflow-hidden"
+            :style="`border-left: 4px solid ${approachAccent(a.id).color};`"
           >
             <div class="flex items-baseline justify-between mb-2">
-              <span class="serif italic text-[#ff5a24] text-xl">{{ String(i+1).padStart(2,'0') }}</span>
+              <div class="flex items-baseline gap-2">
+                <span class="serif italic text-[#ff5a24] text-xl">{{ String(i+1).padStart(2,'0') }}</span>
+                <span class="font-mono text-lg leading-none" :style="`color: ${approachAccent(a.id).color};`">{{ approachAccent(a.id).glyph }}</span>
+              </div>
               <span class="text-[0.65rem] uppercase tracking-wider px-2 py-0.5 rounded border" :class="roleClasses(a.role)">{{ a.role }}</span>
             </div>
             <h3 class="serif text-xl text-black leading-tight">{{ a.name }}</h3>
@@ -430,13 +464,17 @@
               v-for="(a, i) in data.approaches"
               :key="a.id"
               @click="selectedApproachId = a.id"
-              :class="['w-full text-left rounded-xl border p-4 transition tile',
+              :class="['w-full text-left rounded-xl border p-4 transition tile relative overflow-hidden',
                        selectedApproachId === a.id
                          ? 'bg-[#111111] text-white border-black/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]'
                          : 'bg-white/70 border-black/10 hover:bg-white']"
+              :style="`border-left: 4px solid ${approachAccent(a.id).color};`"
             >
               <div class="flex items-baseline justify-between">
-                <span :class="['serif italic text-xl', selectedApproachId === a.id ? 'text-[#ff6330]' : 'text-[#ff5a24]']">{{ String(i+1).padStart(2,'0') }}</span>
+                <div class="flex items-baseline gap-2">
+                  <span :class="['serif italic text-xl', selectedApproachId === a.id ? 'text-[#ff6330]' : 'text-[#ff5a24]']">{{ String(i+1).padStart(2,'0') }}</span>
+                  <span class="font-mono text-base leading-none" :style="`color: ${approachAccent(a.id).color};`">{{ approachAccent(a.id).glyph }}</span>
+                </div>
                 <span class="text-[0.6rem] uppercase tracking-wider opacity-70">{{ a.role }}</span>
               </div>
               <div class="serif text-base leading-tight mt-1">{{ a.name }}</div>
@@ -450,12 +488,14 @@
       <article v-if="selectedApproach" class="space-y-5 sm:space-y-7">
 
         <!-- Hero band -->
-        <div class="relative rounded-2xl border border-black/10 bg-[#1b1c1b] text-white p-6 sm:p-8 lg:p-10 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] overflow-hidden">
+        <div class="relative rounded-2xl border border-black/10 bg-[#1b1c1b] text-white p-6 sm:p-8 lg:p-10 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] overflow-hidden" :style="`border-left: 6px solid ${approachAccent(selectedApproach.id).color};`">
           <div class="corner-tr-light"></div>
           <div class="corner-bl-light"></div>
-          <div class="flex items-center gap-4 mb-3">
+          <div class="flex items-center gap-3 mb-3 flex-wrap">
             <span class="serif italic text-[#ff6330] text-3xl">{{ selectedIndexLabel }}</span>
+            <span class="font-mono text-2xl leading-none" :style="`color: ${approachAccent(selectedApproach.id).color};`">{{ approachAccent(selectedApproach.id).glyph }}</span>
             <span class="text-[0.65rem] uppercase tracking-wider rounded-full border border-white/20 bg-white/5 px-2 py-0.5">{{ selectedApproach.role }}</span>
+            <span class="text-[0.65rem] uppercase tracking-wider rounded-full px-2 py-0.5 font-mono" :style="`background: ${approachAccent(selectedApproach.id).color}25; color: ${approachAccent(selectedApproach.id).color}; border: 1px solid ${approachAccent(selectedApproach.id).color}40;`">{{ approachAccent(selectedApproach.id).label }}</span>
           </div>
           <h2 class="serif text-3xl sm:text-4xl lg:text-5xl leading-[1.04] text-white">{{ selectedApproach.name }}</h2>
           <p class="mt-3 sm:mt-4 text-base sm:text-lg text-white/85 max-w-3xl leading-snug">{{ selectedApproach.tagline }}</p>
@@ -1147,10 +1187,19 @@
     }
   };
 
-  // ---------- TileHeatmap (5 folders × 16 cells) ----------
+  // ---------- TileHeatmap (8 folders × 16 cells, thermal palette) ----------
+  // Thermal heat colour function: 0-1 input → cold-to-hot gradient
+  function heatColor(t) {
+    if (t <= 0.05) return 'rgba(17,17,17,0.06)';
+    if (t <= 0.25) return `rgba(60, 90, 130, ${0.25 + t * 0.6})`;
+    if (t <= 0.45) return `rgba(140, 110, 70, ${0.4 + t * 0.5})`;
+    if (t <= 0.65) return `rgba(217, 154, 58, ${0.55 + t * 0.4})`;
+    if (t <= 0.85) return `rgba(208, 74, 42, ${0.65 + t * 0.3})`;
+    return `rgba(255, 90, 36, ${0.85 + t * 0.15})`;
+  }
   const TileHeatmap = {
     props: ['spec'],
-    data() { return { touches: 0 }; },
+    data() { return { touches: 0, totalTouches: 87 }; },
     mounted() {
       this.$nextTick(() => {
         const s = () => requestAnimationFrame(() => requestAnimationFrame(() => this.animate()));
@@ -1165,61 +1214,84 @@
         const cells = Array.from(root.querySelectorAll('[data-hm]'));
         if (!cells.length) return;
         const cellAt = (b, c) => cells.find(el => el.dataset.bucket == b && el.dataset.col == c);
-        // Sequence of (bucket, col) touches building a fingerprint
-        const seq = [
-          [0, 2], [0, 3], [0, 4], [0, 5], [0, 6],
-          [1, 9], [1, 10],
-          [2, 1], [2, 2], [2, 3], [2, 4], [2, 5],
-          [0, 12], [0, 13],
-          [3, 7], [3, 8],
-          [4, 0], [4, 1]
+        // Base intensity pattern (deterministic heatmap of past activity)
+        const base = {};
+        cells.forEach((cell, idx) => {
+          const b = +cell.dataset.bucket;
+          const c = +cell.dataset.col;
+          // Hot clusters around bucket 1 (src/api) cols 6-10 and bucket 3 (composables) cols 2-6
+          let t = 0;
+          if (b === 0) t = Math.max(0, 0.3 - Math.abs(c - 4) * 0.05);
+          if (b === 1) t = Math.max(0, 0.95 - Math.abs(c - 8) * 0.1);
+          if (b === 2) t = Math.max(0, 0.55 - Math.abs(c - 11) * 0.08);
+          if (b === 3) t = Math.max(0, 0.85 - Math.abs(c - 4) * 0.09);
+          if (b === 4) t = Math.max(0, 0.4 - Math.abs(c - 13) * 0.06);
+          if (b === 5) t = Math.max(0, 0.25 - Math.abs(c - 1) * 0.04);
+          if (b === 6) t = Math.max(0, 0.6 - Math.abs(c - 9) * 0.07);
+          if (b === 7) t = Math.max(0, 0.2 - Math.abs(c - 7) * 0.03);
+          base[`${b}-${c}`] = Math.max(t, 0.03);
+        });
+        // Sequence of new builder touches (these are NEW edits on top of the base)
+        const newTouches = [
+          [1, 7], [1, 8], [1, 9],
+          [3, 3], [3, 4], [3, 5],
+          [0, 5],
+          [2, 11], [2, 12],
+          [6, 9], [6, 10],
+          [4, 13]
         ];
-        const tl = gsap.timeline({ repeat: -1, repeatDelay: 2 });
-        tl.set(cells, { backgroundColor: 'rgba(17,17,17,0.05)' })
-          .call(() => { this.touches = 0; });
-        seq.forEach(([b, c], i) => {
+        const tl = gsap.timeline({ repeat: -1, repeatDelay: 2.2 });
+        // Initialise with base pattern
+        tl.call(() => { this.touches = 0; });
+        cells.forEach(cell => {
+          const k = `${cell.dataset.bucket}-${cell.dataset.col}`;
+          tl.set(cell, { backgroundColor: heatColor(base[k]) }, 0);
+        });
+        // New builder touches: flash orange then settle to a hotter colour
+        newTouches.forEach(([b, c], i) => {
           const cell = cellAt(b, c);
           if (!cell) return;
-          // Builder touches: bright orange flash then settle to a touch-intensity tone
-          tl.to(cell, { backgroundColor: '#ff5a24', duration: 0.18, ease: 'power2.out' }, i === 0 ? '+=0.2' : '+=0.18')
-            .to(cell, { backgroundColor: 'rgba(17,17,17,0.55)', duration: 0.35 }, '+=0.05')
-            .call(() => { this.touches++; });
+          const k = `${b}-${c}`;
+          const newT = Math.min(base[k] + 0.35, 1);
+          tl.to(cell, { backgroundColor: '#ff5a24', duration: 0.14, ease: 'power2.out' }, i === 0 ? '+=0.3' : '+=0.12')
+            .to(cell, { backgroundColor: heatColor(newT), duration: 0.3 }, '+=0.04')
+            .call(() => { this.touches++; base[k] = newT; });
         });
-        // Idle pulse on the busiest cluster
-        tl.to({}, { duration: 1.6 });
-        // Anti-Drift identifies a hotspot
-        const hotspot = cellAt(0, 4);
-        if (hotspot) {
-          tl.call(() => spawnPing(root, hotspot, '#0ea5e9', 2.8));
-          tl.to(hotspot, { backgroundColor: '#0ea5e9', duration: 0.3 }, '+=0.1')
-            .to(hotspot, { backgroundColor: 'rgba(17,17,17,0.55)', duration: 0.4 }, '+=0.5');
-        }
-        tl.to({}, { duration: 1.8 });
+        // Anti-Drift identifies hottest cell as a hotspot
+        const hotspots = [cellAt(1, 8), cellAt(3, 4)];
+        hotspots.forEach((hot, i) => {
+          if (!hot) return;
+          tl.call(() => spawnPing(root, hot, '#0ea5e9', 2.6), null, i === 0 ? '+=0.5' : '+=0.25');
+        });
+        tl.to({}, { duration: 2.2 });
         this.tl = tl;
       }
     },
     render() {
-      const buckets = ['src/server', 'src/api', 'src/components', 'docs', 'infra'];
-      return h('div', { class: 'rounded-md border border-black/10 bg-[#fafaf7] p-3 relative overflow-hidden' }, [
-        h('div', { class: 'space-y-2' },
+      const buckets = ['src/server', 'src/api', 'src/components', 'src/composables', 'docs', 'infra', 'tests', 'training'];
+      return h('div', { class: 'rounded-md border border-black/10 bg-[#1a1410] p-3 relative overflow-hidden' }, [
+        h('div', { class: 'space-y-1' },
           buckets.map((b, bi) => h('div', { class: 'flex items-center gap-3' }, [
-            h('div', { class: 'w-24 sm:w-32 text-[0.6rem] uppercase tracking-wider text-[#7a7a7a] truncate font-mono' }, b),
+            h('div', { class: 'w-20 sm:w-28 text-[0.55rem] uppercase tracking-wider text-white/50 truncate font-mono' }, b),
             h('div', { class: 'flex-1 grid gap-1', style: 'grid-template-columns: repeat(16, minmax(0, 1fr));' },
               Array.from({ length: 16 }, (_, ci) => h('div', {
                 'data-hm': true,
                 'data-bucket': bi,
                 'data-col': ci,
-                class: 'aspect-square rounded-sm',
-                style: 'background-color: rgba(17,17,17,0.05); will-change: background-color;'
+                class: 'aspect-square rounded-[2px]',
+                style: 'background-color: rgba(17,17,17,0.2); will-change: background-color;'
               }))
             )
           ]))
         ),
-        h('div', { class: 'mt-4 flex gap-4 text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] flex-wrap items-center' }, [
-          legendDot('#ff5a24', 'builder touch'),
-          legendDot('rgba(17,17,17,0.55)', 'recorded'),
-          legendDot('#0ea5e9', 'hotspot flagged'),
-          h('span', { class: 'ml-auto font-mono normal-case tracking-normal text-[#4c4c4c]' }, `touches: ${this.touches}`)
+        h('div', { class: 'mt-4 flex gap-3 text-[0.6rem] uppercase tracking-wider text-white/70 flex-wrap items-center' }, [
+          h('div', { class: 'flex items-center gap-1' }, [
+            h('span', { class: 'inline-block w-12 h-1.5 rounded-full', style: 'background: linear-gradient(90deg, rgba(60,90,130,0.4), rgba(217,154,58,0.7), rgba(208,74,42,0.85), #ff5a24);' }),
+            h('span', { class: 'ml-2' }, 'cold → hot')
+          ]),
+          legendDot('#ff5a24', 'new touch'),
+          legendDot('#0ea5e9', 'hotspot'),
+          h('span', { class: 'ml-auto font-mono normal-case tracking-normal text-white' }, `+${this.touches} new · ${this.totalTouches} total`)
         ])
       ]);
     }
@@ -1241,10 +1313,11 @@
         if (typeof gsap === 'undefined' || prefersReducedMotion) return;
         const root = this.$el;
         const cells = Array.from(root.querySelectorAll('[data-eval]'));
+        const glyphs = Array.from(root.querySelectorAll('[data-eval-glyph]'));
         const tray = root.querySelector('[data-eval-tray]');
         if (!cells.length) return;
         const cellAt = (t, r) => cells.find(el => el.dataset.t == t && el.dataset.r == r);
-        // Per-run failure pattern (drift accumulates then partially recovers)
+        const glyphAt = (t, r) => glyphs.find(el => el.dataset.t == t && el.dataset.r == r);
         const runs = [
           { fails: [], warns: [] },
           { fails: [3], warns: [1] },
@@ -1254,21 +1327,30 @@
         ];
         const tl = gsap.timeline({ repeat: -1, repeatDelay: 1.8 });
         tl.set(cells, { backgroundColor: '#dcd9d2' })
-          .call(() => { this.run = 0; this.fails = 0; if (tray) tray.innerHTML = ''; });
+          .set(glyphs, { opacity: 0 })
+          .call(() => { this.run = 0; this.fails = 0; });
         runs.forEach((rdef, ri) => {
           tl.call(() => { this.run = ri + 1; });
           for (let ti = 0; ti < 8; ti++) {
             const cell = cellAt(ti, ri);
+            const glyph = glyphAt(ti, ri);
             if (!cell) continue;
             let color = '#9aa847';
-            if (rdef.fails.includes(ti)) color = '#d04a2a';
-            else if (rdef.warns.includes(ti)) color = '#d49a3a';
+            let symbol = '✓';
+            let glyphColor = 'rgba(255,255,255,0.95)';
+            if (rdef.fails.includes(ti)) { color = '#d04a2a'; symbol = '✗'; glyphColor = 'white'; }
+            else if (rdef.warns.includes(ti)) { color = '#d49a3a'; symbol = '~'; glyphColor = 'rgba(0,0,0,0.7)'; }
             tl.to(cell, { backgroundColor: color, duration: 0.15 }, ti === 0 ? '+=0.25' : '+=0.05');
+            if (glyph) {
+              tl.call(() => {
+                glyph.textContent = symbol;
+                glyph.style.color = glyphColor;
+              }, null, '<');
+              tl.to(glyph, { opacity: 1, duration: 0.15 }, '<');
+            }
           }
-          // After each run, count failures
           tl.call(() => { this.fails = rdef.fails.length; });
         });
-        // On the run with most failures (run 3), Anti-Drift emits tickets from each failed cell to the tray
         const run3 = runs[3];
         run3.fails.forEach((ti, i) => {
           const failCell = cellAt(ti, 3);
@@ -1312,17 +1394,34 @@
                   'data-eval': true,
                   'data-t': ti,
                   'data-r': ri,
-                  class: 'h-6 rounded-sm',
+                  class: 'h-6 rounded-sm relative flex items-center justify-center',
                   style: 'background-color: #dcd9d2; will-change: background-color;'
-                })
+                }, [
+                  h('span', {
+                    'data-eval-glyph': true,
+                    'data-t': ti,
+                    'data-r': ri,
+                    class: 'font-mono text-[0.7rem] font-bold leading-none',
+                    style: 'opacity: 0; color: white;'
+                  })
+                ])
               ]))
             ]))
           )
         ]),
         h('div', { class: 'mt-4 flex gap-4 text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] flex-wrap items-center' }, [
-          legendDot('#9aa847', 'pass'),
-          legendDot('#d49a3a', 'warn'),
-          legendDot('#d04a2a', 'fail'),
+          h('div', { class: 'flex items-center gap-1.5' }, [
+            h('span', { class: 'w-3 h-3 rounded-sm flex items-center justify-center font-mono font-bold text-[0.55rem] text-white', style: 'background:#9aa847;' }, '✓'),
+            h('span', {}, 'pass')
+          ]),
+          h('div', { class: 'flex items-center gap-1.5' }, [
+            h('span', { class: 'w-3 h-3 rounded-sm flex items-center justify-center font-mono font-bold text-[0.55rem] text-black/70', style: 'background:#d49a3a;' }, '~'),
+            h('span', {}, 'warn')
+          ]),
+          h('div', { class: 'flex items-center gap-1.5' }, [
+            h('span', { class: 'w-3 h-3 rounded-sm flex items-center justify-center font-mono font-bold text-[0.55rem] text-white', style: 'background:#d04a2a;' }, '✗'),
+            h('span', {}, 'fail')
+          ]),
           legendDot('#dcd9d2', 'no eval'),
           h('span', { class: 'ml-auto font-mono normal-case tracking-normal text-[#4c4c4c]' }, `run ${this.run}/${runs} · failures ${this.fails}`)
         ])
@@ -1376,33 +1475,43 @@
     },
     render() {
       const commits = [
-        { msg: 'wire openapi to new /reports route', covered: [3, 4, 12] },
-        { msg: 'add reports_summary column + migration', covered: [1, 2, 3] },
-        { msg: 'fix middleware regression for trial users', covered: [5, 3] },
-        { msg: 'update onboarding training for new fields', covered: [13, 1, 9] },
-        { msg: 'pin cdn version for support assets', covered: [10, 11] },
-        { msg: 'add eval scaffolding for route ↔ openapi', covered: [3, 12] }
+        { hash: 'a3f9c2', author: 'janak', msg: 'wire openapi to new /reports route', covered: [3, 4, 12] },
+        { hash: 'e7b401', author: 'maya', msg: 'add reports_summary column + migration', covered: [1, 2, 3] },
+        { hash: '4c1d88', author: 'janak', msg: 'fix middleware regression for trial users', covered: [5, 3] },
+        { hash: 'f0a23b', author: 'sam', msg: 'update onboarding training for new fields', covered: [13, 1, 9] },
+        { hash: '9d8e55', author: 'maya', msg: 'pin cdn version for support assets', covered: [10, 11] },
+        { hash: '2bf7a0', author: 'janak', msg: 'add eval scaffolding for route ↔ openapi', covered: [3, 12] }
       ];
+      const authorColor = (a) => ({ janak: '#8b5cf6', maya: '#0ea5e9', sam: '#f59e0b' }[a] || '#7a7a7a');
       return h('div', { class: 'rounded-md border border-black/10 bg-[#fafaf7] p-3 space-y-2 relative overflow-hidden' }, [
         ...commits.map((c, i) => h('div', {
           'data-commit': true,
-          class: 'rounded-md border border-black/10 bg-white/85 p-3'
+          class: 'rounded-md border border-black/10 bg-white p-3 flex gap-3 items-start',
+          style: 'border-left: 3px solid #8b5cf6;'
         }, [
-          h('div', { class: 'flex items-baseline justify-between gap-3' }, [
-            h('div', { class: 'text-sm text-[#252525] flex-1 truncate' }, c.msg),
-            h('div', { class: 'text-[0.6rem] uppercase tracking-wider text-[#7a7a7a]' }, `commit ${i + 1}`)
+          h('div', { class: 'flex flex-col items-center gap-1 pt-0.5' }, [
+            h('span', { class: 'w-2.5 h-2.5 rounded-full', style: `background-color: ${authorColor(c.author)};` }),
+            h('span', { class: 'font-mono text-[0.55rem] text-[#7a7a7a] uppercase' }, c.author)
           ]),
-          h('div', { class: 'mt-2 grid gap-1', style: 'grid-template-columns: repeat(14, minmax(0, 1fr));' },
-            Array.from({ length: 14 }, (_, li) => h('div', {
-              'data-ind': true,
-              class: 'h-2 rounded-sm',
-              style: 'background-color: #dcd9d2; will-change: background-color, transform;'
-            }))
-          )
+          h('div', { class: 'flex-1 min-w-0' }, [
+            h('div', { class: 'flex items-baseline justify-between gap-3' }, [
+              h('div', { class: 'font-mono text-[0.65rem] text-[#8b5cf6] tracking-wider' }, c.hash),
+              h('div', { class: 'text-[0.55rem] uppercase tracking-wider text-[#7a7a7a]' }, `#${i + 1}`)
+            ]),
+            h('div', { class: 'text-sm text-[#252525] truncate mt-0.5' }, c.msg),
+            h('div', { class: 'mt-2 grid gap-1', style: 'grid-template-columns: repeat(14, minmax(0, 1fr));' },
+              Array.from({ length: 14 }, (_, li) => h('div', {
+                'data-ind': true,
+                class: 'h-2 rounded-sm',
+                style: 'background-color: #dcd9d2; will-change: background-color, transform;'
+              }))
+            )
+          ])
         ])),
         h('div', { class: 'flex gap-4 text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] flex-wrap items-center mt-2' }, [
           legendDot('#9aa847', 'link named'),
           legendDot('#dcd9d2', 'not named'),
+          legendDot('#8b5cf6', 'commit'),
           h('span', { class: 'ml-auto font-mono normal-case tracking-normal text-[#4c4c4c]' }, `commits ${this.commits}/6 · coverage ${this.coverage}/14`)
         ])
       ]);
@@ -1741,12 +1850,12 @@
 
         // Reset
         tl.set(links, { backgroundColor: '#9aa847', scale: 1, rotation: 0, boxShadow: '0 0 0 rgba(0,0,0,0)' })
-          .set(agent, { opacity: 0, y: -56, x: placeAgentAt(0) })
+          .set(agent, { opacity: 0, y: 12, x: placeAgentAt(0) })
           .set(stale, { opacity: 0 })
           .call(() => { this.staleCount = 0; this.turn = 0; });
 
-        // Builder arrives above first edit
-        tl.to(agent, { opacity: 1, x: placeAgentAt(edits[0]), y: -64, duration: 0.6 }, '+=0.4');
+        // Builder arrives above first edit (sits inside stage padding-top)
+        tl.to(agent, { opacity: 1, x: placeAgentAt(edits[0]), y: 20, duration: 0.6 }, '+=0.4');
 
         // Three builder turns
         edits.forEach((idx, turnNum) => {
@@ -1771,8 +1880,8 @@
         // Neighbours settle to synced
         tl.to(neighborCells, { backgroundColor: '#9aa847', duration: 0.3 }, '+=0.2');
 
-        // Builder exits
-        tl.to(agent, { opacity: 0, y: -100, duration: 0.5 }, '+=0.5');
+        // Builder exits (fades and drifts slightly up, but stays in-stage to avoid overlap)
+        tl.to(agent, { opacity: 0, y: 0, duration: 0.5 }, '+=0.5');
 
         // Drift exposed: stale cells flash red with wobble
         tl.to(staleCells, {
@@ -1917,7 +2026,7 @@
           .call(() => {
             bridges.forEach(b => { const p = b.querySelector('path'); if (p) p.setAttribute('stroke-dashoffset', '120'); });
           })
-          .set(walker, { opacity: 0, y: -56, x: placeWalker(startIdx), scale: 1, boxShadow: '0 8px 24px rgba(14,165,233,0.35)' })
+          .set(walker, { opacity: 0, y: 12, x: placeWalker(startIdx), scale: 1, boxShadow: '0 8px 24px rgba(14,165,233,0.35)' })
           .call(() => { this.status = 'idle'; this.bridgesChecked = 0; this.bridgesFailed = 0; });
 
         // Mark the touched link in orange
@@ -1926,8 +2035,8 @@
 
         tl.to(links[startIdx], { scale: 1, duration: 0.25 }, '+=0.2');
 
-        // Walker arrives with glow pulse
-        tl.to(walker, { opacity: 1, y: -64, duration: 0.45 })
+        // Walker arrives with glow pulse (sits inside stage padding, not above)
+        tl.to(walker, { opacity: 1, y: 20, duration: 0.45 })
           .call(() => { this.status = 'walking left'; });
 
         // Walk LEFT, revealing bridges with stroke-draw
@@ -1974,8 +2083,8 @@
           });
         }
 
-        // Walker exits
-        tl.to(walker, { opacity: 0, y: -96, duration: 0.45 }, '+=0.5')
+        // Walker exits (fade in place, stays inside stage)
+        tl.to(walker, { opacity: 0, y: 0, duration: 0.45 }, '+=0.5')
           .call(() => { this.status = 'complete'; });
 
         // Hold for the user to read the bridge map
@@ -2348,6 +2457,39 @@
         if (owner.includes('Anti-Drift')) return 'bg-[#1b1c1b] text-white border-black/40';
         if (owner.includes('.tickets')) return 'bg-[#ff5a24] text-white border-[#ff5a24]';
         return 'bg-white/40 text-[#2c2c2c] border-black/15';
+      },
+      loopCardClass(tone) {
+        if (tone === 'human') return 'bg-white/85 border-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]';
+        if (tone === 'machine') return 'bg-[#0f1c2e] border-[#0ea5e9]/30 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]';
+        if (tone === 'mixed') return 'bg-gradient-to-br from-[#ff5a24]/8 to-[#0ea5e9]/8 border-black/10 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]';
+        if (tone === 'system') return 'bg-[#1b1c1b] border-[#ff6330]/30 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]';
+        return 'bg-white/70 border-black/10';
+      },
+      loopLabelClass(tone) {
+        if (tone === 'human') return 'text-[#ff5a24]';
+        if (tone === 'machine') return 'text-[#0ea5e9]';
+        if (tone === 'mixed') return 'text-[#ff5a24]';
+        if (tone === 'system') return 'text-[#ff6330]';
+        return 'text-[#7a7a7a]';
+      },
+      loopAccentClass(tone) {
+        if (tone === 'human') return 'text-[#ff5a24]';
+        if (tone === 'machine') return 'text-[#0ea5e9]';
+        if (tone === 'mixed') return 'text-[#7a7a7a]';
+        if (tone === 'system') return 'text-[#ff6330]';
+        return 'text-[#7a7a7a]';
+      },
+      approachAccent(id) {
+        const map = {
+          'chain-walker': { color: '#0ea5e9', glyph: '→', label: 'walker' },
+          'edit-fingerprint-heatmap': { color: '#ec4899', glyph: '✱', label: 'heatmap' },
+          'symbiotic-chain-evals': { color: '#16a34a', glyph: '✓', label: 'evals' },
+          'commit-narrative-spine': { color: '#8b5cf6', glyph: '◉', label: 'git' },
+          'per-file-dependency-manifest': { color: '#14b8a6', glyph: '⫝', label: 'tree' },
+          'stop-hook-drift-sweep': { color: '#f59e0b', glyph: '◍', label: 'sweep' },
+          'chain-layered-tile-board': { color: '#ff5a24', glyph: '▦', label: 'board' }
+        };
+        return map[id] || { color: '#7a7a7a', glyph: '·', label: '' };
       }
     },
     components: {

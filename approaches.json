@@ -4,6 +4,36 @@
     "subtitle": "Seven designs for keeping the development chain in sync",
     "audience": "rsi-harness team review",
     "stack": ["Node.js", "Vue.js", "Postgres optional"],
+    "virtuous_loop": {
+      "title": "The virtuous loop, made continuous",
+      "lead": "The practice I already run on a personal cadence (pause, check, fix) is the loop. It works because I remember to run it. The harness exists so the loop runs whether I remember or not. A system of cooperating agents, scripts, and evals, growing alongside the project.",
+      "phases": [
+        {
+          "label": "01 · Human cadence",
+          "title": "Pause every three to five turns",
+          "body": "A human pauses, checks the README, the spec, the routes, the tests, the evals. The check finds the drift; the human fixes it. The check works. The discipline does not scale. It depends entirely on the human remembering to run it.",
+          "tone": "human"
+        },
+        {
+          "label": "02 · Externalised",
+          "title": "Cadence becomes a hook. Checks become scripts.",
+          "body": "The checklist becomes deterministic evals. The pause becomes a Stop hook, a PostToolUse hook, an external chokidar watcher. The discipline moves out of the human's memory and into the harness. The same checks run regardless of who is at the keyboard.",
+          "tone": "machine"
+        },
+        {
+          "label": "03 · Cooperating agents",
+          "title": "Builder, watcher, and scripts in concert",
+          "body": "A Builder LLM writes application code. Deterministic scripts run continuously on the filesystem and produce evidence. An Anti-Drift LLM reads the evidence on its own slower cadence and decides whether to file a ticket. Three different kinds of agent, each with its own job, none of them flooding the others.",
+          "tone": "mixed"
+        },
+        {
+          "label": "04 · Self-healing growth",
+          "title": "The loop expands with the project",
+          "body": "New chain links appear as the project grows. New evals scaffold next to them. The walker learns the new transitions. The system carries the discipline forward without requiring human memory. The personal practice becomes a property of the project, and the project carries it on.",
+          "tone": "system"
+        }
+      ]
+    },
     "problem_statement": {
       "title": "Where drift starts and how it spreads",
       "cards": [
