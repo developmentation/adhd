@@ -1,0 +1,31 @@
+# Local working files not meant for the public site
+prompt.md
+template.html
+_prompt/prompt.md
+_prompt/template.html
+_archive/
+
+# Local Claude Code state
+.claude/
+.ai/
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor noise
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node (if a build step is ever added)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build output (none today, future-proofing)
+dist/
+build/

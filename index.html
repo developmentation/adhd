@@ -1,0 +1,2362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Drift Detection Approaches</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Playfair+Display:ital,wght@0,500;1,500&display=swap" rel="stylesheet">
+<style>
+  body {
+    font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+    color: #090909;
+    background-color: #f6f5f2;
+    background-image: radial-gradient(circle at 50% 14%, rgba(255,255,255,0.96), rgba(246,245,242,0.76) 48%, rgba(238,236,232,0.92) 100%);
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+    background-size: cover;
+  }
+  .serif { font-family: 'Playfair Display', Georgia, serif; }
+  .corner-tr { position: absolute; right: 1.25rem; top: 1.25rem; height: 3.5rem; width: 3.5rem; border-right: 1px solid rgba(0,0,0,0.1); border-top: 1px solid rgba(0,0,0,0.1); }
+  .corner-bl { position: absolute; bottom: 1.25rem; left: 1.25rem; height: 3.5rem; width: 3.5rem; border-bottom: 1px solid rgba(0,0,0,0.1); border-left: 1px solid rgba(0,0,0,0.1); }
+  .corner-tr-light { position: absolute; right: 1.25rem; top: 1.25rem; height: 3.5rem; width: 3.5rem; border-right: 1px solid rgba(255,255,255,0.45); border-top: 1px solid rgba(255,255,255,0.45); }
+  .corner-bl-light { position: absolute; bottom: 1.25rem; left: 1.25rem; height: 3.5rem; width: 3.5rem; border-bottom: 1px solid rgba(255,255,255,0.45); border-left: 1px solid rgba(255,255,255,0.45); }
+  .tile { transition: transform 120ms ease-out, box-shadow 120ms ease-out; }
+  .tile:hover { transform: translateY(-1px); box-shadow: 0 8px 20px rgba(0,0,0,0.08); }
+  .dot-grid { background-image: radial-gradient(circle, rgba(0,0,0,0.18) 1px, transparent 1px); background-size: 14px 14px; }
+  .hatch { background-image: repeating-linear-gradient(135deg, rgba(0,0,0,0.06) 0, rgba(0,0,0,0.06) 1px, transparent 1px, transparent 7px); }
+  .scroll-fade { mask-image: linear-gradient(to right, transparent 0, black 12px, black calc(100% - 12px), transparent 100%); }
+  [v-cloak] { display: none; }
+  .chain-strip-grid { grid-template-columns: 1fr; }
+  @media (min-width: 640px) { .chain-strip-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); } }
+  @media (min-width: 1024px) { .chain-strip-grid { grid-template-columns: repeat(14, minmax(0, 1fr)); } }
+  .topology-grid { grid-template-columns: 1fr; }
+  @media (min-width: 1024px) {
+    .topology-grid {
+      grid-template-columns: 1.05fr 60px 1.1fr 60px 1.05fr;
+    }
+  }
+  .lifecycle-grid { grid-template-columns: 1fr; }
+  @media (min-width: 1024px) {
+    .lifecycle-grid {
+      grid-template-columns: 1fr 32px 1fr 32px 1fr 32px 1fr;
+    }
+  }
+  /* Animated simulators */
+  .sim-stage { position: relative; width: 100%; min-height: 0; }
+  .sim-chain { display: grid; grid-template-columns: repeat(14, minmax(0, 1fr)); gap: 4px; }
+  .sim-link {
+    position: relative;
+    border-radius: 6px;
+    background-color: #9aa847;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.35);
+    min-height: 56px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 4px 2px;
+    will-change: transform, background-color;
+  }
+  .sim-link-num { font-family: 'Playfair Display', Georgia, serif; font-style: italic; color: rgba(0,0,0,0.55); font-size: 0.65rem; line-height: 1; }
+  .sim-link-label { color: rgba(0,0,0,0.7); font-size: 0.5rem; text-transform: uppercase; letter-spacing: 0.04em; text-align: center; line-height: 1.05; margin-top: 2px; word-break: break-word; }
+  @media (max-width: 639px) {
+    .sim-link { min-height: 38px; }
+    .sim-link-label { display: none; }
+  }
+  .sim-agent {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 56px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    font-family: 'Playfair Display', Georgia, serif;
+    font-style: italic;
+    font-size: 0.7rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    opacity: 0;
+    pointer-events: none;
+    will-change: transform, opacity;
+  }
+  .sim-agent-builder { background: #ff5a24; color: white; box-shadow: 0 8px 24px rgba(255,90,36,0.35); }
+  .sim-agent-walker { background: #0ea5e9; color: white; box-shadow: 0 8px 24px rgba(14,165,233,0.35); border-radius: 4px; font-family: 'JetBrains Mono', ui-monospace, monospace; }
+  .sim-agent-antidrift { background: #1b1c1b; color: #0ea5e9; box-shadow: 0 8px 24px rgba(14,165,233,0.25); border: 1px solid rgba(14,165,233,0.4); }
+  .sim-bridge { position: absolute; height: 22px; pointer-events: none; opacity: 0; }
+  .sim-bridge svg { width: 100%; height: 100%; overflow: visible; }
+  .sim-status-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    border: 1px solid;
+  }
+  .sim-board {
+    display: grid;
+    gap: 3px;
+    grid-template-columns: 96px repeat(14, minmax(0, 1fr));
+  }
+  @media (max-width: 639px) {
+    .sim-board { grid-template-columns: 56px repeat(14, minmax(0, 1fr)); gap: 2px; }
+  }
+  .sim-feature-label {
+    font-size: 0.6rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: #4c4c4c;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding-right: 8px;
+    text-align: right;
+    line-height: 1.1;
+  }
+  @media (max-width: 639px) {
+    .sim-feature-label { font-size: 0.5rem; padding-right: 4px; }
+  }
+  .sim-cell {
+    aspect-ratio: 1 / 1;
+    border-radius: 3px;
+    background: #d8d6cf;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.4);
+    will-change: transform, background-color;
+  }
+  .sim-scan-beam {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 28px;
+    background: linear-gradient(90deg, transparent, rgba(14,165,233,0.35), transparent);
+    pointer-events: none;
+    opacity: 0;
+    will-change: transform, opacity;
+  }
+  .sim-ticket-tray { display: flex; flex-direction: column; gap: 6px; }
+  .sim-ticket {
+    border: 1px solid rgba(0,0,0,0.1);
+    border-left: 3px solid #d04a2a;
+    background: white;
+    padding: 6px 8px;
+    border-radius: 4px;
+    font-size: 0.65rem;
+    font-family: ui-monospace, 'JetBrains Mono', monospace;
+    will-change: transform, opacity;
+  }
+  .sim-cycle-dot { width: 8px; height: 8px; border-radius: 50%; background: #d8d6cf; }
+  .sim-cycle-dot.active { background: #ff5a24; }
+  .sim-cycle-dot.sweep { background: #0ea5e9; box-shadow: 0 0 0 3px rgba(14,165,233,0.2); }
+  @media (prefers-reduced-motion: reduce) {
+    .sim-link, .sim-cell, .sim-agent, .sim-bridge, .sim-scan-beam, .sim-ticket { transition: none !important; animation: none !important; }
+  }
+  .ticket-enter-active, .ticket-leave-active { transition: opacity 280ms ease-out, transform 280ms ease-out; }
+  .ticket-enter-from { opacity: 0; transform: translateY(-8px); }
+  .ticket-leave-to { opacity: 0; transform: translateY(8px); }
+</style>
+</head>
+<body class="min-h-screen overflow-x-hidden antialiased">
+<div id="app" v-cloak>
+
+  <!-- HEADER -->
+  <header class="flex sm:px-8 lg:px-16 w-full z-20 pt-5 pr-4 pb-5 pl-4 sm:pt-7 sm:pr-6 sm:pb-7 sm:pl-6 relative items-center justify-between gap-3">
+    <div class="select-none text-[0.7rem] sm:text-base lg:text-xl font-medium text-black tracking-[0.12em] sm:tracking-[0.14em] lg:tracking-[0.16em] truncate min-w-0">ANTI-DRIFT-HARNESS-DEVELOPMENT</div>
+    <nav class="hidden items-center gap-10 text-sm font-normal text-black lg:flex shrink-0">
+      <a href="approaches.json" class="transition hover:text-[#ff5a24]">approaches.json</a>
+      <a href="_prompt/CHECKS.md" class="transition hover:text-[#ff5a24]">CHECKS.md</a>
+      <a href="_prompt/00-writing-style-guide.md" class="transition hover:text-[#ff5a24]">Style guide</a>
+    </nav>
+  </header>
+
+  <!-- HERO -->
+  <section class="grid sm:px-8 lg:grid-cols-[1.05fr_1fr] lg:gap-14 lg:px-16 lg:pt-6 z-10 w-full max-w-[112rem] mx-auto pt-4 pr-4 pb-10 pl-4 sm:pr-6 sm:pl-6 relative gap-y-8 items-center">
+    <div class="max-w-2xl z-20 pt-4 sm:pt-6 relative">
+      <div class="mb-5 sm:mb-8 flex items-center gap-3 text-xs sm:text-base font-normal uppercase tracking-wide text-[#222222]">
+        <span class="size-3 bg-[#ff5a24] shadow-[0_0_0_1px_rgba(255,90,36,0.18)]"></span>
+        <span>DRIFT DETECTION HARNESS</span>
+      </div>
+      <h1 class="max-w-3xl font-medium leading-[0.96] tracking-tight text-black serif">
+        <span class="block text-4xl sm:text-5xl md:text-6xl lg:text-6xl xl:text-7xl">Keep the chain</span>
+        <span class="block text-4xl sm:text-5xl md:text-6xl lg:text-6xl xl:text-7xl italic text-[#ff5a24]">in sync</span>
+        <span class="block text-4xl sm:text-5xl md:text-6xl lg:text-6xl xl:text-7xl">end to end.</span>
+      </h1>
+      <p class="mt-5 sm:mt-7 max-w-xl text-base sm:text-lg lg:text-xl font-normal leading-snug text-[#252525]" v-if="data">
+        {{ data.meta.subtitle }}. Seven designs the team can pick from, mix, or sequence. Each design names the hook events it consumes, the skill files it needs, and a tile-based visual for the surface.
+      </p>
+      <div class="mt-6 sm:mt-9 flex flex-wrap gap-2">
+        <span v-for="s in (data?.meta?.stack || [])" :key="s" class="rounded-full border border-black/15 bg-white/60 px-3 py-1 text-[0.65rem] sm:text-xs uppercase tracking-wider text-black">{{ s }}</span>
+      </div>
+    </div>
+
+    <!-- HERO CHAIN PREVIEW -->
+    <div class="relative" v-if="data">
+      <div class="overflow-hidden bg-[#f3f2ef]/80 border-black/15 border rounded-[1.6rem] sm:rounded-[2.4rem] shadow-[0_32px_80px_rgba(0,0,0,0.08)] backdrop-blur-sm p-5 sm:p-8 lg:p-10 relative">
+        <div class="corner-tr-light" style="border-color: rgba(0,0,0,0.12);"></div>
+        <div class="corner-bl-light" style="border-color: rgba(0,0,0,0.12);"></div>
+        <p class="text-[0.65rem] sm:text-xs uppercase tracking-wider text-[#7a7a7a]">The chain</p>
+        <p class="serif italic text-xl sm:text-2xl text-black mt-2 mb-5">requirements through training</p>
+        <div class="grid grid-cols-4 sm:grid-cols-7 gap-2">
+          <div
+            v-for="(link, i) in data.meta.chain"
+            :key="link.id"
+            class="rounded-md border border-black/10 bg-white/85 px-1.5 py-2 text-center flex flex-col items-center justify-start min-h-[4.5rem]"
+          >
+            <div class="serif text-sm text-[#ff5a24] leading-none">{{ String(i+1).padStart(2,'0') }}</div>
+            <div class="text-[0.55rem] uppercase tracking-wider text-[#2c2c2c] leading-tight mt-1.5 break-words hyphens-auto" style="word-break: break-word;">{{ link.label }}</div>
+          </div>
+        </div>
+        <p class="text-xs sm:text-sm leading-snug text-[#4c4c4c] mt-5">
+          Each link is a target of drift. A change at any step has to propagate up and down the rest. Seven approaches follow.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- TABS -->
+  <nav class="sticky top-0 z-30 bg-[#f6f5f2]/90 backdrop-blur border-b border-black/10">
+    <div class="max-w-[112rem] mx-auto sm:px-8 lg:px-16 px-4">
+      <div class="flex items-center gap-1 overflow-x-auto scroll-fade py-2 sm:py-3 -mx-2 px-2">
+        <button
+          v-for="t in tabs"
+          :key="t.id"
+          @click="tab = t.id"
+          :class="['shrink-0 rounded-md px-3 sm:px-4 py-1.5 sm:py-2 text-xs sm:text-sm font-medium border transition whitespace-nowrap',
+                   tab === t.id
+                     ? 'bg-[#111111] text-white border-black/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]'
+                     : 'bg-white/40 text-[#2c2c2c] border-black/10 hover:bg-white/70']"
+        >
+          <span class="serif italic text-[#ff5a24] mr-1.5" v-if="tab === t.id">→</span>{{ t.label }}
+        </button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="max-w-[112rem] mx-auto sm:px-8 lg:px-16 px-4 py-6 sm:py-10" v-if="data">
+
+    <!-- ===================== OVERVIEW ===================== -->
+    <section v-if="tab === 'overview'" class="space-y-7 sm:space-y-10 lg:space-y-12">
+
+      <!-- Problem statement (card grid) -->
+      <section v-if="data.meta.problem_statement" class="space-y-4 sm:space-y-5">
+        <div>
+          <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Problem statement</p>
+          <h2 class="serif text-2xl sm:text-3xl lg:text-4xl mt-2 text-black">{{ data.meta.problem_statement.title }}</h2>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 sm:gap-4">
+          <template v-for="card in data.meta.problem_statement.cards" :key="card.label">
+
+            <!-- Card 01: Practice (intro) -->
+            <article v-if="card.kind === 'intro'" class="lg:col-span-2 relative rounded-2xl border border-black/10 bg-white/70 p-5 sm:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] overflow-hidden">
+              <div class="corner-tr"></div>
+              <p class="text-[0.65rem] uppercase tracking-wider text-[#ff5a24] font-medium">{{ card.label }}</p>
+              <h3 class="serif text-xl sm:text-2xl text-black mt-2 mb-3 leading-tight">{{ card.title }}</h3>
+              <p class="text-sm sm:text-base text-[#252525] leading-snug">{{ card.body }}</p>
+            </article>
+
+            <!-- Card 02: Stat (numbers) -->
+            <article v-else-if="card.kind === 'stat'" class="lg:col-span-4 relative rounded-2xl border border-black/40 bg-[#1b1c1b] text-white p-5 sm:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] overflow-hidden">
+              <div class="corner-tr-light"></div>
+              <div class="absolute bottom-0 right-0 h-24 w-24 hatch opacity-30"></div>
+              <p class="text-[0.65rem] uppercase tracking-wider text-[#ff6330] font-medium">{{ card.label }}</p>
+              <h3 class="serif text-xl sm:text-2xl text-white mt-2 mb-5 leading-tight">{{ card.title }}</h3>
+              <div class="grid grid-cols-3 gap-3 sm:gap-5">
+                <div v-for="s in card.stats" :key="s.label">
+                  <div class="serif text-3xl sm:text-4xl lg:text-5xl text-[#ff6330] leading-none">{{ s.value }}</div>
+                  <div class="text-[0.65rem] uppercase tracking-wider text-white/70 mt-2 leading-snug">{{ s.label }}</div>
+                </div>
+              </div>
+              <p class="text-sm text-white/80 mt-5 leading-snug max-w-2xl">{{ card.footer }}</p>
+            </article>
+
+            <!-- Card 03: Chain (full width hero) -->
+            <article v-else-if="card.kind === 'chain'" class="sm:col-span-2 lg:col-span-6 relative rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] overflow-hidden">
+              <div class="corner-tr"></div>
+              <div class="grid lg:grid-cols-[1.1fr_1.4fr] gap-5 lg:gap-8 items-center">
+                <div>
+                  <p class="text-[0.65rem] uppercase tracking-wider text-[#ff5a24] font-medium">{{ card.label }}</p>
+                  <h3 class="serif text-2xl sm:text-3xl lg:text-4xl text-black mt-2 mb-4 leading-tight">{{ card.title }}</h3>
+                  <p class="text-sm sm:text-base text-[#252525] leading-relaxed">{{ card.body }}</p>
+                </div>
+                <div class="grid gap-1.5" style="grid-template-columns: repeat(7, minmax(0, 1fr));">
+                  <div
+                    v-for="(link, i) in data.meta.chain"
+                    :key="link.id"
+                    class="rounded-md border border-black/10 bg-white/90 px-1.5 py-2 text-center flex flex-col items-center justify-start min-h-[3.5rem]"
+                  >
+                    <div class="serif text-[0.7rem] text-[#ff5a24] leading-none italic">{{ String(i+1).padStart(2,'0') }}</div>
+                    <div class="text-[0.5rem] uppercase tracking-wider text-[#2c2c2c] leading-tight mt-1 break-words" style="word-break: break-word;">{{ link.label }}</div>
+                  </div>
+                </div>
+              </div>
+            </article>
+
+            <!-- Card 04: Proposal -->
+            <article v-else-if="card.kind === 'proposal'" class="lg:col-span-3 relative rounded-2xl border border-black/10 bg-white/70 p-5 sm:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] overflow-hidden">
+              <div class="corner-tr"></div>
+              <p class="text-[0.65rem] uppercase tracking-wider text-[#ff5a24] font-medium">{{ card.label }}</p>
+              <h3 class="serif text-xl sm:text-2xl text-black mt-2 mb-3 leading-tight">{{ card.title }}</h3>
+              <p class="text-sm text-[#252525] leading-snug mb-4">{{ card.body }}</p>
+              <div class="flex flex-wrap gap-1.5">
+                <span v-for="c in (card.chips || [])" :key="c" class="text-[0.6rem] uppercase tracking-wider px-2 py-1 rounded border border-black/15 bg-[#fafaf7] text-[#2c2c2c] font-mono">{{ c }}</span>
+              </div>
+            </article>
+
+            <!-- Card 05: Anti-Drift role (accent) -->
+            <article v-else-if="card.kind === 'feature'" class="lg:col-span-3 relative rounded-2xl border border-[#ff5a24] bg-[#ff5a24] text-white p-5 sm:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] overflow-hidden">
+              <div class="corner-tr-light"></div>
+              <div class="absolute right-3 top-3 size-3 rounded-full bg-white animate-pulse"></div>
+              <p class="text-[0.65rem] uppercase tracking-wider text-white/85 font-medium">{{ card.label }}</p>
+              <h3 class="serif text-xl sm:text-2xl text-white mt-2 mb-3 leading-tight">{{ card.title }}</h3>
+              <p class="text-sm text-white/95 leading-snug">{{ card.body }}</p>
+            </article>
+
+          </template>
+        </div>
+      </section>
+
+      <!-- Chain Break Simulator -->
+      <article class="relative rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] overflow-hidden">
+        <div class="corner-tr"></div>
+        <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Simulator</p>
+        <h2 class="serif text-2xl sm:text-3xl mt-2 mb-2 text-black">A change in one place breaks the chain elsewhere</h2>
+        <p class="text-sm sm:text-base text-[#4c4c4c] leading-snug max-w-3xl mb-5">The Builder agent (orange) edits one link. It propagates the change to one or two direct neighbours, then stops. Every other link is now stale. Watch the rest of the chain flash red after the Builder leaves.</p>
+        <chain-break-sim :chain="data.meta.chain"></chain-break-sim>
+      </article>
+
+      <div class="grid lg:grid-cols-[1fr_1fr] gap-4 sm:gap-7">
+
+        <!-- Design principles -->
+        <article class="relative rounded-2xl border border-black/10 bg-white/45 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
+          <div class="corner-tr"></div>
+          <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Design principles</p>
+          <h2 class="serif text-2xl sm:text-3xl mt-2 mb-5 text-black">Four constraints the team agreed on</h2>
+          <ol class="space-y-4">
+            <li
+              v-for="(p, i) in data.meta.design_principles"
+              :key="i"
+              class="flex gap-4 items-start"
+            >
+              <span class="serif italic text-[#ff5a24] text-2xl shrink-0 leading-none mt-1">{{ String(i+1).padStart(2,'0') }}</span>
+              <span class="text-base leading-snug text-[#252525]">{{ p }}</span>
+            </li>
+          </ol>
+        </article>
+
+        <!-- Hook events -->
+        <article class="relative rounded-2xl border border-black/10 bg-[#1b1c1b] text-white p-6 sm:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] overflow-hidden">
+          <div class="corner-tr-light"></div>
+          <div class="absolute bottom-0 right-0 h-20 w-20 hatch opacity-50"></div>
+          <p class="text-xs uppercase tracking-wider text-white/60">Hook events in play</p>
+          <h2 class="serif text-2xl sm:text-3xl mt-2 mb-5 text-white">Claude Code triggers used across the seven</h2>
+          <div class="grid grid-cols-2 gap-2">
+            <div
+              v-for="ev in data.meta.hook_events_in_play"
+              :key="ev"
+              class="rounded-md border border-white/15 bg-white/5 px-3 py-2 text-sm tile"
+            >
+              <span class="text-[#ff6330] font-medium">{{ ev }}</span>
+            </div>
+          </div>
+          <p class="text-sm text-white/75 mt-6 leading-snug">
+            Most approaches anchor on PostToolUse for per-edit propagation and Stop for end-of-turn sweeps. SessionStart and PreCompact handle state across context resets.
+          </p>
+          <div v-if="data.meta.monitoring_note" class="mt-4 rounded-md border border-[#0ea5e9]/30 bg-[#0ea5e9]/10 p-3">
+            <p class="text-[0.6rem] uppercase tracking-wider text-[#0ea5e9] mb-1">Note · FileChanged not used</p>
+            <p class="text-xs text-white/85 leading-snug">{{ data.meta.monitoring_note }}</p>
+          </div>
+        </article>
+      </div>
+
+      <!-- Chain strip in full -->
+      <article class="relative rounded-2xl border border-black/10 bg-white/40 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
+        <div class="corner-tr"></div>
+        <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Canonical chain</p>
+        <h2 class="serif text-2xl sm:text-3xl mt-2 mb-6 text-black">Where drift accumulates</h2>
+        <div class="grid gap-2 chain-strip-grid">
+          <div
+            v-for="(link, i) in data.meta.chain"
+            :key="link.id"
+            class="rounded-md border border-black/10 bg-white/85 p-3 text-center min-h-[5.5rem] flex flex-col justify-between tile"
+          >
+            <div class="serif text-base text-[#ff5a24]">{{ String(i+1).padStart(2,'0') }}</div>
+            <div class="text-[0.7rem] uppercase tracking-wider text-[#2c2c2c] leading-tight">{{ link.label }}</div>
+          </div>
+        </div>
+      </article>
+
+      <!-- Quick approach list -->
+      <article class="relative rounded-2xl border border-black/10 bg-white/40 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
+        <div class="corner-tr"></div>
+        <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">The seven approaches</p>
+        <h2 class="serif text-2xl sm:text-3xl mt-2 mb-6 text-black">Click any to open its detail</h2>
+        <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+          <button
+            v-for="(a, i) in data.approaches"
+            :key="a.id"
+            @click="goToApproach(a.id)"
+            class="text-left relative rounded-xl border border-black/10 bg-white/85 p-5 shadow-[0_10px_24px_rgba(0,0,0,0.04)] hover:shadow-[0_18px_38px_rgba(0,0,0,0.08)] transition"
+          >
+            <div class="flex items-baseline justify-between mb-2">
+              <span class="serif italic text-[#ff5a24] text-xl">{{ String(i+1).padStart(2,'0') }}</span>
+              <span class="text-[0.65rem] uppercase tracking-wider px-2 py-0.5 rounded border" :class="roleClasses(a.role)">{{ a.role }}</span>
+            </div>
+            <h3 class="serif text-xl text-black leading-tight">{{ a.name }}</h3>
+            <p class="text-sm text-[#4c4c4c] leading-snug mt-2">{{ a.tagline }}</p>
+          </button>
+        </div>
+      </article>
+    </section>
+
+    <!-- ===================== APPROACHES ===================== -->
+    <section v-if="tab === 'approaches'" class="grid lg:grid-cols-[280px_1fr] gap-5 sm:gap-7">
+
+      <!-- Rail -->
+      <aside class="relative">
+        <div class="lg:sticky lg:top-24">
+          <p class="text-xs uppercase tracking-wider text-[#7a7a7a] mb-3 px-1">Pick an approach</p>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 gap-2">
+            <button
+              v-for="(a, i) in data.approaches"
+              :key="a.id"
+              @click="selectedApproachId = a.id"
+              :class="['w-full text-left rounded-xl border p-4 transition tile',
+                       selectedApproachId === a.id
+                         ? 'bg-[#111111] text-white border-black/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]'
+                         : 'bg-white/70 border-black/10 hover:bg-white']"
+            >
+              <div class="flex items-baseline justify-between">
+                <span :class="['serif italic text-xl', selectedApproachId === a.id ? 'text-[#ff6330]' : 'text-[#ff5a24]']">{{ String(i+1).padStart(2,'0') }}</span>
+                <span class="text-[0.6rem] uppercase tracking-wider opacity-70">{{ a.role }}</span>
+              </div>
+              <div class="serif text-base leading-tight mt-1">{{ a.name }}</div>
+              <div class="text-xs text-[#4c4c4c] sm:text-[#7a7a7a] leading-snug mt-1.5 sm:hidden lg:hidden" :class="selectedApproachId === a.id ? 'text-white/80' : ''">{{ a.tagline }}</div>
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Detail -->
+      <article v-if="selectedApproach" class="space-y-5 sm:space-y-7">
+
+        <!-- Hero band -->
+        <div class="relative rounded-2xl border border-black/10 bg-[#1b1c1b] text-white p-6 sm:p-8 lg:p-10 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] overflow-hidden">
+          <div class="corner-tr-light"></div>
+          <div class="corner-bl-light"></div>
+          <div class="flex items-center gap-4 mb-3">
+            <span class="serif italic text-[#ff6330] text-3xl">{{ selectedIndexLabel }}</span>
+            <span class="text-[0.65rem] uppercase tracking-wider rounded-full border border-white/20 bg-white/5 px-2 py-0.5">{{ selectedApproach.role }}</span>
+          </div>
+          <h2 class="serif text-3xl sm:text-4xl lg:text-5xl leading-[1.04] text-white">{{ selectedApproach.name }}</h2>
+          <p class="mt-3 sm:mt-4 text-base sm:text-lg text-white/85 max-w-3xl leading-snug">{{ selectedApproach.tagline }}</p>
+          <div class="mt-6 h-px w-10 bg-[#ff6330]"></div>
+          <div class="mt-5 sm:mt-6 grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3 text-xs uppercase tracking-wider">
+            <div class="rounded-md border border-white/15 bg-white/5 p-3">
+              <div class="text-white/60">Complexity</div>
+              <div class="text-base mt-1 normal-case tracking-normal">{{ selectedApproach.complexity }}</div>
+            </div>
+            <div class="rounded-md border border-white/15 bg-white/5 p-3">
+              <div class="text-white/60">Runtime cost</div>
+              <div class="text-base mt-1 normal-case tracking-normal">{{ selectedApproach.runtime_cost }}</div>
+            </div>
+            <div class="rounded-md border border-white/15 bg-white/5 p-3">
+              <div class="text-white/60">Memory</div>
+              <div class="text-base mt-1 normal-case tracking-normal">{{ selectedApproach.memory_footprint }}</div>
+            </div>
+            <div class="rounded-md border border-white/15 bg-white/5 p-3">
+              <div class="text-white/60">Covers</div>
+              <div class="text-base mt-1 normal-case tracking-normal">{{ (selectedApproach.covers || []).join(', ') }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Summary -->
+        <div class="relative rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
+          <div class="corner-tr"></div>
+          <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Summary</p>
+          <h3 class="serif text-xl sm:text-2xl text-black mt-2 mb-3 sm:mb-4">What it does and how</h3>
+          <p class="text-base leading-relaxed text-[#252525] max-w-3xl">{{ selectedApproach.summary }}</p>
+        </div>
+
+        <!-- Visual + Triggers -->
+        <div class="grid lg:grid-cols-[1.3fr_1fr] gap-4 sm:gap-7">
+          <div class="relative rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] overflow-hidden">
+            <div class="corner-tr"></div>
+            <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Sample visual</p>
+            <h3 class="serif text-2xl text-black mt-2 mb-2">{{ visualTitle(selectedApproach.sample_visual.type) }}</h3>
+            <p class="text-sm text-[#4c4c4c] leading-snug max-w-2xl mb-5">{{ selectedApproach.sample_visual.description }}</p>
+            <component :is="visualComponent(selectedApproach.sample_visual.type)" :spec="selectedApproach.sample_visual" :chain="data.meta.chain" />
+            <div class="mt-5 grid grid-cols-3 gap-2 text-[0.65rem] uppercase tracking-wider text-[#7a7a7a]">
+              <div><span class="text-[#2c2c2c]">x:</span> {{ selectedApproach.sample_visual.axes?.x || 'n/a' }}</div>
+              <div><span class="text-[#2c2c2c]">y:</span> {{ selectedApproach.sample_visual.axes?.y || 'n/a' }}</div>
+              <div><span class="text-[#2c2c2c]">encoding:</span> {{ selectedApproach.sample_visual.encoding || 'n/a' }}</div>
+            </div>
+          </div>
+
+          <div class="relative rounded-2xl border border-black/10 bg-[#ff5a24] text-white p-6 sm:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)] overflow-hidden">
+            <div class="corner-tr-light"></div>
+            <p class="text-xs uppercase tracking-wider text-white/85">Triggers</p>
+            <h3 class="serif text-xl sm:text-2xl text-white mt-2 mb-4 sm:mb-5">When this fires</h3>
+            <div class="space-y-3">
+              <div class="rounded-md bg-white/12 backdrop-blur p-3">
+                <div class="text-[0.65rem] uppercase tracking-wider text-white/75">Primary hook</div>
+                <div class="text-base mt-1 font-medium">{{ selectedApproach.triggers.primary_hook }}<span v-if="selectedApproach.triggers.matcher"> · matcher: {{ selectedApproach.triggers.matcher }}</span></div>
+              </div>
+              <div class="rounded-md bg-white/12 backdrop-blur p-3" v-if="selectedApproach.triggers.if_clause">
+                <div class="text-[0.65rem] uppercase tracking-wider text-white/75">if clause</div>
+                <div class="text-sm mt-1 font-mono">{{ selectedApproach.triggers.if_clause }}</div>
+              </div>
+              <div class="rounded-md bg-white/12 backdrop-blur p-3" v-if="selectedApproach.triggers.secondary_hooks?.length">
+                <div class="text-[0.65rem] uppercase tracking-wider text-white/75">Also runs on</div>
+                <ul class="text-sm mt-1 space-y-0.5">
+                  <li v-for="s in selectedApproach.triggers.secondary_hooks" :key="s">{{ s }}</li>
+                </ul>
+              </div>
+              <div class="rounded-md bg-white/12 backdrop-blur p-3" v-if="selectedApproach.triggers.fs_triggers?.length">
+                <div class="text-[0.65rem] uppercase tracking-wider text-white/75">File-system triggers</div>
+                <div class="text-sm mt-1">{{ selectedApproach.triggers.fs_triggers.join(', ') }}</div>
+              </div>
+              <p class="text-sm text-white/85 leading-snug pt-1">{{ selectedApproach.triggers.rationale }}</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Walker animated simulator (only for chain-walker approach) -->
+        <div v-if="selectedApproach.id === 'chain-walker'" class="relative rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] overflow-hidden">
+          <div class="corner-tr"></div>
+          <div class="flex items-baseline justify-between gap-3 flex-wrap">
+            <div>
+              <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Walker in motion</p>
+              <h3 class="serif text-xl sm:text-2xl text-black mt-2 mb-2">Bridges built across the chain</h3>
+            </div>
+            <span class="text-[0.6rem] uppercase tracking-wider px-2 py-1 rounded border border-[#0ea5e9]/40 bg-[#0ea5e9]/10 text-[#0369a1] font-mono">deterministic script</span>
+          </div>
+          <p class="text-sm text-[#4c4c4c] leading-snug max-w-3xl mb-5">The walker (cyan) is a deterministic script, not an LLM. It starts at the touched link and crawls outward, computing a bridge between each pair of neighbouring links. Olive bridges mean the two ends agree. Red bridges mean a real drift was found.</p>
+          <walker-sim :chain="data.meta.chain"></walker-sim>
+        </div>
+
+        <!-- Architecture -->
+        <div class="relative rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
+          <div class="corner-tr"></div>
+          <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Architecture</p>
+          <h3 class="serif text-xl sm:text-2xl text-black mt-2 mb-4 sm:mb-5">Components and flow</h3>
+          <div class="grid lg:grid-cols-2 gap-4 sm:gap-5">
+            <div class="space-y-3">
+              <div
+                v-for="(c, i) in selectedApproach.architecture.components"
+                :key="i"
+                class="rounded-md border border-black/10 bg-white/85 p-4 tile"
+              >
+                <div class="flex items-baseline gap-3">
+                  <span class="serif italic text-[#ff5a24]">{{ String(i+1).padStart(2,'0') }}</span>
+                  <div>
+                    <div class="font-medium text-black">{{ c.name }}</div>
+                    <div class="text-sm text-[#4c4c4c] leading-snug">{{ c.role }}</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <div class="rounded-xl border border-black/10 bg-[#111111] text-white p-5 font-mono text-sm leading-relaxed">
+              <div class="text-[#ff6330] uppercase tracking-wider text-[0.65rem] mb-3">Flow</div>
+              <div class="whitespace-pre-wrap">{{ selectedApproach.architecture.flow }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Skill files -->
+        <div class="relative rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
+          <div class="corner-tr"></div>
+          <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Skill files needed</p>
+          <h3 class="serif text-xl sm:text-2xl text-black mt-2 mb-4 sm:mb-5">What ships with the harness</h3>
+          <div class="grid sm:grid-cols-2 gap-3">
+            <div
+              v-for="(f, i) in selectedApproach.skill_files"
+              :key="i"
+              class="rounded-md border border-black/10 bg-[#fafaf7] p-4 tile"
+            >
+              <div class="font-mono text-sm text-[#111111] break-all">{{ f.path }}</div>
+              <div class="text-sm text-[#4c4c4c] leading-snug mt-1">{{ f.purpose }}</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Pros & cons -->
+        <div class="grid md:grid-cols-2 gap-4 sm:gap-5">
+          <div class="relative rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
+            <div class="corner-tr"></div>
+            <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Pros</p>
+            <h3 class="serif text-xl sm:text-2xl text-black mt-2 mb-3 sm:mb-4">Why pick it</h3>
+            <ul class="space-y-3">
+              <li v-for="(p, i) in selectedApproach.pros" :key="i" class="flex gap-3">
+                <span class="w-1.5 h-1.5 rounded-full bg-[#ff5a24] mt-2 shrink-0"></span>
+                <span class="text-base text-[#252525] leading-snug">{{ p }}</span>
+              </li>
+            </ul>
+          </div>
+          <div class="relative rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
+            <div class="corner-tr"></div>
+            <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Cons</p>
+            <h3 class="serif text-xl sm:text-2xl text-black mt-2 mb-3 sm:mb-4">Where it strains</h3>
+            <ul class="space-y-3">
+              <li v-for="(c, i) in selectedApproach.cons" :key="i" class="flex gap-3">
+                <span class="w-1.5 h-1.5 rounded-full bg-[#111111] mt-2 shrink-0"></span>
+                <span class="text-base text-[#252525] leading-snug">{{ c }}</span>
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <!-- Memory model -->
+        <div class="relative rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
+          <div class="corner-tr"></div>
+          <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Memory model</p>
+          <h3 class="serif text-xl sm:text-2xl text-black mt-2 mb-4 sm:mb-5">Where state lives</h3>
+          <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+            <div class="rounded-md border border-black/10 bg-white/85 p-4">
+              <div class="text-[0.65rem] uppercase tracking-wider text-[#7a7a7a]">Type</div>
+              <div class="text-base mt-1 text-black">{{ selectedApproach.memory_model.type }}</div>
+            </div>
+            <div class="rounded-md border border-black/10 bg-white/85 p-4">
+              <div class="text-[0.65rem] uppercase tracking-wider text-[#7a7a7a]">Location</div>
+              <div class="text-base mt-1 text-black font-mono break-all">{{ selectedApproach.memory_model.location }}</div>
+            </div>
+            <div class="rounded-md border border-black/10 bg-white/85 p-4">
+              <div class="text-[0.65rem] uppercase tracking-wider text-[#7a7a7a]">Lifecycle</div>
+              <div class="text-base mt-1 text-black">{{ selectedApproach.memory_model.lifecycle }}</div>
+            </div>
+          </div>
+          <div class="mt-5 rounded-md border border-black/10 bg-[#fafaf7] p-4">
+            <div class="text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] mb-2">Files</div>
+            <ul class="font-mono text-sm space-y-1 text-[#111111]">
+              <li v-for="(f, i) in selectedApproach.memory_model.files" :key="i" class="break-all">{{ f }}</li>
+            </ul>
+          </div>
+        </div>
+
+      </article>
+    </section>
+
+    <!-- ===================== TOPOLOGY ===================== -->
+    <section v-if="tab === 'topology' && data.topology" class="space-y-5 sm:space-y-7">
+
+      <!-- Hero band -->
+      <div class="relative rounded-2xl border border-black/10 bg-[#1b1c1b] text-white p-6 sm:p-8 lg:p-10 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] overflow-hidden">
+        <div class="corner-tr-light"></div>
+        <div class="corner-bl-light"></div>
+        <p class="text-xs uppercase tracking-wider text-white/60">Topology</p>
+        <h2 class="serif text-3xl sm:text-4xl lg:text-5xl text-white mt-2 leading-[1.04]">{{ data.topology.name }}</h2>
+        <p class="mt-4 sm:mt-5 text-base sm:text-lg text-white/85 max-w-4xl leading-snug">{{ data.topology.principle }}</p>
+        <div class="mt-5 sm:mt-6 h-px w-10 bg-[#ff6330]"></div>
+        <p class="mt-5 sm:mt-6 text-sm sm:text-base text-white/75 max-w-4xl leading-snug">{{ data.topology.rationale }}</p>
+      </div>
+
+      <!-- Anti-Drift Board (animated) -->
+      <div class="relative rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] overflow-hidden">
+        <div class="corner-tr"></div>
+        <div class="flex items-baseline justify-between gap-3 flex-wrap">
+          <div>
+            <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Live picture</p>
+            <h3 class="serif text-xl sm:text-2xl text-black mt-2 mb-2">Builder works the chain. Anti-Drift watches.</h3>
+          </div>
+          <div class="flex gap-2 flex-wrap">
+            <span class="text-[0.6rem] uppercase tracking-wider px-2 py-1 rounded border border-[#ff5a24]/40 bg-[#ff5a24]/10 text-[#ff5a24] font-mono">builder · llm</span>
+            <span class="text-[0.6rem] uppercase tracking-wider px-2 py-1 rounded border border-[#0ea5e9]/40 bg-[#0ea5e9]/10 text-[#0369a1] font-mono">anti-drift · agent + evals</span>
+          </div>
+        </div>
+        <p class="text-sm text-[#4c4c4c] leading-snug max-w-3xl mb-5 sm:mb-6">Rows are features in the application. Columns are the fourteen chain links. The Builder LLM edits cells fast and propagates a couple of hops. Every five turns, the Anti-Drift agent sweeps the board, reads the eval evidence, validates against the code, and drops tickets where the chain is weakening. Anti-Drift never edits application code.</p>
+        <anti-drift-board :chain="data.meta.chain"></anti-drift-board>
+      </div>
+
+      <!-- 3-column architecture diagram -->
+      <div class="relative rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
+        <div class="corner-tr"></div>
+        <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Architecture</p>
+        <h3 class="serif text-xl sm:text-2xl text-black mt-2 mb-5 sm:mb-6">Observers, ticket bus, builder</h3>
+
+        <div class="grid gap-4 items-stretch topology-grid">
+          <!-- Observers column -->
+          <div class="space-y-2">
+            <div class="text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] mb-2 px-1">Observers · independent Claude Code sessions</div>
+            <div
+              v-for="(ob, i) in data.topology.example_observers"
+              :key="ob.name"
+              class="relative rounded-md border border-black/10 bg-[#1b1c1b] text-white p-3 tile overflow-hidden"
+            >
+              <div class="absolute right-2 top-2 h-3 w-3 border-r border-t border-white/30"></div>
+              <div class="flex items-baseline justify-between gap-2">
+                <span class="serif italic text-[#ff6330] text-sm leading-none">{{ String(i+1).padStart(2,'0') }}</span>
+                <span class="text-[0.55rem] uppercase tracking-wider text-white/50">observer</span>
+              </div>
+              <div class="serif text-base mt-1 leading-tight">{{ ob.name }}</div>
+              <div class="text-[0.7rem] text-white/75 leading-snug mt-1">{{ ob.scope }}</div>
+            </div>
+          </div>
+
+          <!-- Writes arrow -->
+          <div class="flex flex-col justify-center items-center gap-2 text-[#7a7a7a] py-2 lg:py-8">
+            <span class="text-[0.6rem] uppercase tracking-wider whitespace-nowrap">writes</span>
+            <svg class="h-5 w-10 lg:h-6 lg:w-12 rotate-90 lg:rotate-0" viewBox="0 0 48 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M2 8 H40" stroke="#ff5a24" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M34 3 L42 8 L34 13" stroke="#ff5a24" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+          </div>
+
+          <!-- Tickets bus -->
+          <div class="space-y-3">
+            <div class="text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] mb-2 px-1">Bus · Project A/.tickets/</div>
+            <div
+              v-for="(state, si) in data.topology.ticket_lifecycle"
+              :key="state.state"
+              :class="['relative rounded-md border p-3 tile', ticketStateClasses(state.state)]"
+            >
+              <div class="flex items-baseline justify-between gap-2">
+                <span class="font-mono text-[0.65rem] uppercase tracking-wider" :class="ticketStateLabelClass(state.state)">{{ state.folder }}</span>
+                <span class="text-[0.55rem] uppercase tracking-wider text-[#7a7a7a]">{{ state.state }}</span>
+              </div>
+              <div class="mt-2 space-y-1">
+                <div v-for="n in ticketCountFor(state.state)" :key="n" class="rounded-sm bg-white/85 border border-black/10 p-1.5 flex items-center gap-2">
+                  <span class="w-1.5 h-1.5 rounded-full" :style="`background-color: ${ticketDotColor(state.state)};`"></span>
+                  <span class="font-mono text-[0.6rem] text-[#252525] truncate">{{ exampleTicketName(state.state, n) }}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Reads arrow -->
+          <div class="flex flex-col justify-center items-center gap-2 text-[#7a7a7a] py-2 lg:py-8">
+            <span class="text-[0.6rem] uppercase tracking-wider whitespace-nowrap">reads</span>
+            <svg class="h-5 w-10 lg:h-6 lg:w-12 rotate-90 lg:rotate-0" viewBox="0 0 48 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <path d="M2 8 H40" stroke="#111111" stroke-width="1.5" stroke-linecap="round"/>
+              <path d="M34 3 L42 8 L34 13" stroke="#111111" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+            </svg>
+          </div>
+
+          <!-- Builder column -->
+          <div class="space-y-2">
+            <div class="text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] mb-2 px-1">Builder · Project A</div>
+            <div class="relative rounded-md border border-black/10 bg-white/85 p-5 tile h-full flex flex-col">
+              <div class="corner-tr"></div>
+              <div class="flex items-baseline justify-between">
+                <span class="serif italic text-[#ff5a24] text-2xl leading-none">A</span>
+                <span class="text-[0.55rem] uppercase tracking-wider text-[#7a7a7a]">builder</span>
+              </div>
+              <div class="serif text-2xl text-black mt-2">Project A</div>
+              <div class="text-sm text-[#4c4c4c] leading-snug mt-2">Own CLAUDE.md focused on application skills. Reads tickets at session and turn boundaries. Resolves them as part of normal work.</div>
+              <div class="text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] mt-5 mb-2">Listener hooks</div>
+              <div class="space-y-1.5">
+                <div class="rounded-md bg-[#fafaf7] border border-black/10 p-2 font-mono text-[0.7rem] text-[#111111]">SessionStart → read .tickets/open/</div>
+                <div class="rounded-md bg-[#fafaf7] border border-black/10 p-2 font-mono text-[0.7rem] text-[#111111]">UserPromptSubmit → prepend ticket summary</div>
+                <div class="rounded-md bg-[#fafaf7] border border-black/10 p-2 font-mono text-[0.7rem] text-[#111111]">PostToolUse Write → mark acknowledged</div>
+                <div class="rounded-md bg-[#fafaf7] border border-black/10 p-2 font-mono text-[0.7rem] text-[#111111]">Stop → list unresolved</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <p class="text-sm text-[#4c4c4c] leading-snug mt-6 max-w-4xl">
+          The bus is a folder. No daemon, no message broker. Each observer drops files into <span class="font-mono text-[#111111]">.tickets/open/</span>. Each builder hook reads or moves them. Lifecycle is folder-by-folder.
+        </p>
+      </div>
+
+      <!-- Ticket schema -->
+      <div class="relative rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
+        <div class="corner-tr"></div>
+        <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Ticket schema</p>
+        <h3 class="serif text-xl sm:text-2xl text-black mt-2 mb-4 sm:mb-5">What a ticket looks like on disk</h3>
+        <div class="grid lg:grid-cols-[1fr_1.1fr] gap-5">
+          <div>
+            <div class="text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] mb-2">Filename pattern</div>
+            <div class="font-mono text-sm text-[#111111] rounded-md border border-black/10 bg-[#fafaf7] p-3 break-all">{{ data.topology.ticket_schema.filename_pattern }}</div>
+            <div class="text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] mb-2 mt-4">Example</div>
+            <div class="font-mono text-sm text-[#111111] rounded-md border border-[#ff5a24]/30 bg-[#ff5a24]/8 p-3 break-all">{{ data.topology.ticket_schema.example_filename }}</div>
+            <div class="text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] mb-2 mt-4">Frontmatter</div>
+            <div class="font-mono text-xs text-[#111111] rounded-md border border-black/10 bg-[#fafaf7] p-3 space-y-1">
+              <div class="text-[#7a7a7a]">---</div>
+              <div v-for="f in data.topology.ticket_schema.frontmatter_fields" :key="f">{{ f }}</div>
+              <div class="text-[#7a7a7a]">---</div>
+            </div>
+          </div>
+          <div>
+            <div class="text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] mb-2">Body sections</div>
+            <ol class="space-y-3">
+              <li v-for="(s,i) in data.topology.ticket_schema.body_sections" :key="i" class="flex gap-3 items-start rounded-md border border-black/10 bg-white/85 p-3 tile">
+                <span class="serif italic text-[#ff5a24] text-xl leading-none shrink-0">{{ String(i+1).padStart(2,'0') }}</span>
+                <span class="text-sm text-[#252525] leading-snug">{{ s }}</span>
+              </li>
+            </ol>
+          </div>
+        </div>
+      </div>
+
+      <!-- Lifecycle horizontal flow -->
+      <div class="relative rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
+        <div class="corner-tr"></div>
+        <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Ticket lifecycle</p>
+        <h3 class="serif text-xl sm:text-2xl text-black mt-2 mb-5 sm:mb-6">Folder transitions</h3>
+        <div class="grid gap-3 lifecycle-grid">
+          <template v-for="(state, i) in data.topology.ticket_lifecycle" :key="state.state">
+            <div :class="['relative rounded-md border p-4 tile', ticketStateClasses(state.state)]">
+              <div class="flex items-baseline justify-between mb-2">
+                <span class="serif italic text-[#ff5a24] text-xl leading-none">{{ String(i+1).padStart(2,'0') }}</span>
+                <span class="text-[0.55rem] uppercase tracking-wider" :class="ticketStateLabelClass(state.state)">{{ state.state }}</span>
+              </div>
+              <div class="font-mono text-xs text-[#111111] break-all">{{ state.folder }}</div>
+              <div class="text-sm text-[#252525] leading-snug mt-2">{{ state.trigger }}</div>
+            </div>
+            <div v-if="i < data.topology.ticket_lifecycle.length - 1" class="flex items-center justify-center text-[#7a7a7a]">
+              <svg class="h-5 w-8 hidden lg:block" viewBox="0 0 32 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M2 8 H24" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                <path d="M20 4 L26 8 L20 12" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+              </svg>
+              <svg class="h-8 w-5 lg:hidden" viewBox="0 0 16 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M8 2 V24" stroke="currentColor" stroke-width="1.2" stroke-linecap="round"/>
+                <path d="M4 20 L8 26 L12 20" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+              </svg>
+            </div>
+          </template>
+        </div>
+      </div>
+
+      <!-- Wiring: observer side vs builder side -->
+      <div class="grid md:grid-cols-2 gap-4 sm:gap-5">
+        <article class="relative rounded-2xl border border-black/10 bg-[#1b1c1b] text-white p-6 sm:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] overflow-hidden">
+          <div class="corner-tr-light"></div>
+          <p class="text-xs uppercase tracking-wider text-white/60">Observer side</p>
+          <h3 class="serif text-xl sm:text-2xl text-white mt-2 mb-4 sm:mb-5">Wiring outside Project A</h3>
+          <ol class="space-y-3">
+            <li v-for="(w,i) in data.topology.wiring.observer_side" :key="i" class="flex gap-3 items-start">
+              <span class="serif italic text-[#ff6330] text-lg leading-none shrink-0">{{ String(i+1).padStart(2,'0') }}</span>
+              <span class="text-sm text-white/90 leading-snug">{{ w }}</span>
+            </li>
+          </ol>
+        </article>
+        <article class="relative rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
+          <div class="corner-tr"></div>
+          <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Builder side</p>
+          <h3 class="serif text-xl sm:text-2xl text-black mt-2 mb-4 sm:mb-5">Wiring inside Project A</h3>
+          <ol class="space-y-3">
+            <li v-for="(w,i) in data.topology.wiring.builder_side" :key="i" class="flex gap-3 items-start">
+              <span class="serif italic text-[#ff5a24] text-lg leading-none shrink-0">{{ String(i+1).padStart(2,'0') }}</span>
+              <span class="text-sm text-[#252525] leading-snug">{{ w }}</span>
+            </li>
+          </ol>
+        </article>
+      </div>
+
+      <!-- Separation of duties -->
+      <div class="relative rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] overflow-x-auto">
+        <div class="corner-tr"></div>
+        <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Separation of duties</p>
+        <h3 class="serif text-xl sm:text-2xl text-black mt-2 mb-4 sm:mb-5">Who owns what</h3>
+        <table class="min-w-full text-sm">
+          <thead>
+            <tr class="text-left text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] border-b border-black/10">
+              <th class="py-3 pr-4 font-normal">Duty</th>
+              <th class="py-3 pr-4 font-normal">Owner</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="(d, i) in data.topology.separation_of_duties" :key="i" class="border-b border-black/5 hover:bg-white/40 transition">
+              <td class="py-3 pr-4 text-[#252525]">{{ d.duty }}</td>
+              <td class="py-3 pr-4">
+                <span :class="['text-xs uppercase tracking-wider px-2 py-0.5 rounded border', dutyOwnerClass(d.owner)]">{{ d.owner }}</span>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Example observers grid -->
+      <div class="relative rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
+        <div class="corner-tr"></div>
+        <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Example observers</p>
+        <h3 class="serif text-xl sm:text-2xl text-black mt-2 mb-4 sm:mb-5">Six harnesses, one project</h3>
+        <div class="grid sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+          <article
+            v-for="(ob, i) in data.topology.example_observers"
+            :key="ob.name"
+            class="relative rounded-xl border border-black/10 bg-white/85 p-5 tile"
+          >
+            <div class="absolute right-3 top-3 h-2 w-2 rounded-full bg-[#ff5a24]"></div>
+            <div class="serif italic text-[#ff5a24] text-xl leading-none">{{ String(i+1).padStart(2,'0') }}</div>
+            <h4 class="serif text-xl text-black mt-2 leading-tight">{{ ob.name }}</h4>
+            <p class="text-sm text-[#4c4c4c] leading-snug mt-2">{{ ob.scope }}</p>
+            <div class="text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] mt-4">Produces</div>
+            <div class="text-sm text-[#252525] leading-snug">{{ ob.produces }}</div>
+            <div class="text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] mt-3">Cadence</div>
+            <div class="text-sm text-[#252525] leading-snug">{{ ob.cadence }}</div>
+            <div class="text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] mt-3">Uses</div>
+            <div class="flex flex-wrap gap-1 mt-1">
+              <span v-for="a in ob.uses_approaches" :key="a" class="text-[0.6rem] font-mono rounded border border-black/10 bg-[#fafaf7] px-1.5 py-0.5 text-[#111111]">{{ a }}</span>
+            </div>
+          </article>
+        </div>
+      </div>
+
+      <!-- Benefits / Caveats -->
+      <div class="grid md:grid-cols-2 gap-4 sm:gap-5">
+        <div class="relative rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
+          <div class="corner-tr"></div>
+          <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Benefits</p>
+          <h3 class="serif text-xl sm:text-2xl text-black mt-2 mb-3 sm:mb-4">Why this pattern</h3>
+          <ul class="space-y-3">
+            <li v-for="(b, i) in data.topology.benefits" :key="i" class="flex gap-3">
+              <span class="w-1.5 h-1.5 rounded-full bg-[#ff5a24] mt-2 shrink-0"></span>
+              <span class="text-base text-[#252525] leading-snug">{{ b }}</span>
+            </li>
+          </ul>
+        </div>
+        <div class="relative rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
+          <div class="corner-tr"></div>
+          <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Caveats</p>
+          <h3 class="serif text-xl sm:text-2xl text-black mt-2 mb-3 sm:mb-4">Where it strains</h3>
+          <ul class="space-y-3">
+            <li v-for="(c, i) in data.topology.caveats" :key="i" class="flex gap-3">
+              <span class="w-1.5 h-1.5 rounded-full bg-[#111111] mt-2 shrink-0"></span>
+              <span class="text-base text-[#252525] leading-snug">{{ c }}</span>
+            </li>
+          </ul>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ===================== COMPARE ===================== -->
+    <section v-if="tab === 'compare'" class="space-y-5 sm:space-y-7">
+      <div class="relative rounded-2xl border border-black/10 bg-white/45 p-3 sm:p-6 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] overflow-x-auto">
+        <div class="corner-tr"></div>
+        <p class="text-xs uppercase tracking-wider text-[#7a7a7a] px-2 sm:px-0">Compare</p>
+        <h2 class="serif text-2xl sm:text-3xl text-black mt-2 mb-5 sm:mb-6 px-2 sm:px-0">Side by side</h2>
+        <table class="min-w-[640px] sm:min-w-full text-sm">
+          <thead>
+            <tr class="text-left text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] border-b border-black/10">
+              <th class="py-3 pr-4 font-normal">Approach</th>
+              <th class="py-3 pr-4 font-normal">Role</th>
+              <th class="py-3 pr-4 font-normal">Primary hook</th>
+              <th class="py-3 pr-4 font-normal">Complexity</th>
+              <th class="py-3 pr-4 font-normal">Runtime cost</th>
+              <th class="py-3 pr-4 font-normal">Memory</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr
+              v-for="(a, i) in data.approaches"
+              :key="a.id"
+              class="border-b border-black/5 hover:bg-white/40 transition"
+            >
+              <td class="py-4 pr-4">
+                <div class="flex items-center gap-3">
+                  <span class="serif italic text-[#ff5a24]">{{ String(i+1).padStart(2,'0') }}</span>
+                  <button @click="goToApproach(a.id)" class="text-left">
+                    <div class="font-medium text-black">{{ a.name }}</div>
+                    <div class="text-xs text-[#7a7a7a]">{{ a.tagline }}</div>
+                  </button>
+                </div>
+              </td>
+              <td class="py-4 pr-4">
+                <span class="text-[0.65rem] uppercase tracking-wider px-2 py-0.5 rounded border" :class="roleClasses(a.role)">{{ a.role }}</span>
+              </td>
+              <td class="py-4 pr-4 font-mono text-xs">{{ a.triggers.primary_hook }}<span v-if="a.triggers.matcher"> · {{ a.triggers.matcher }}</span></td>
+              <td class="py-4 pr-4">{{ a.complexity }}</td>
+              <td class="py-4 pr-4">{{ a.runtime_cost }}</td>
+              <td class="py-4 pr-4">{{ a.memory_footprint }}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- ===================== PAIRINGS ===================== -->
+    <section v-if="tab === 'pairings'" class="space-y-5 sm:space-y-7">
+      <div class="max-w-3xl">
+        <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Pairings</p>
+        <h2 class="serif text-3xl sm:text-4xl text-black mt-2 mb-3">Read as detector plus surface</h2>
+        <p class="text-base text-[#252525] leading-snug">A working harness needs at least one detector (something that decides drift has happened) and at least one surface (something that shows the team what the detector saw). Four pairings the team can pick from.</p>
+      </div>
+      <div class="grid md:grid-cols-2 gap-4 sm:gap-5">
+        <article
+          v-for="(p, i) in data.recommended_pairings"
+          :key="i"
+          class="relative rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]"
+        >
+          <div class="corner-tr"></div>
+          <div class="flex items-baseline gap-3 mb-2">
+            <span class="serif italic text-[#ff5a24] text-2xl">{{ String(i+1).padStart(2,'0') }}</span>
+            <h3 class="serif text-2xl text-black">{{ p.name }}</h3>
+          </div>
+          <p class="text-base text-[#252525] leading-snug mb-5">{{ p.why }}</p>
+          <div class="space-y-2">
+            <button
+              v-for="id in p.pair"
+              :key="id"
+              @click="goToApproach(id)"
+              class="w-full text-left flex items-center justify-between rounded-md border border-black/10 bg-white/85 p-3 hover:bg-white tile"
+            >
+              <div>
+                <div class="font-medium text-black">{{ approachById(id).name }}</div>
+                <div class="text-xs text-[#7a7a7a]">{{ approachById(id).tagline }}</div>
+              </div>
+              <span class="text-[0.65rem] uppercase tracking-wider px-2 py-0.5 rounded border" :class="roleClasses(approachById(id).role)">{{ approachById(id).role }}</span>
+            </button>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <!-- ===================== QUESTIONS ===================== -->
+    <section v-if="tab === 'questions'" class="space-y-5 sm:space-y-7">
+      <div class="max-w-3xl">
+        <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Open questions</p>
+        <h2 class="serif text-3xl sm:text-4xl text-black mt-2 mb-3">Bring to the team review</h2>
+        <p class="text-base text-[#252525] leading-snug">Five decisions the inventory does not settle on its own. Each has a real trade-off that depends on the project size and the team's appetite for upfront eval authoring.</p>
+      </div>
+      <div class="grid md:grid-cols-2 gap-4 sm:gap-5">
+        <article
+          v-for="(q, i) in data.open_questions"
+          :key="i"
+          class="relative rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]"
+        >
+          <div class="corner-tr"></div>
+          <span class="serif italic text-[#ff5a24] text-3xl">{{ String(i+1).padStart(2,'0') }}</span>
+          <p class="text-base text-[#252525] leading-snug mt-3">{{ q }}</p>
+        </article>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Footer -->
+  <footer class="max-w-[112rem] mx-auto sm:px-8 lg:px-16 px-4 pb-8 sm:pb-12 pt-4 sm:pt-6 text-xs text-[#7a7a7a]">
+    <div class="flex flex-col sm:flex-row sm:flex-wrap sm:items-center sm:justify-between gap-2 sm:gap-3 border-t border-black/10 pt-4 sm:pt-6">
+      <div>Serve with <span class="font-mono text-[#2c2c2c]">npx serve .</span> or any static server so the page can fetch approaches.json.</div>
+      <div>Style enforced by <a href="_prompt/00-writing-style-guide.md" class="text-[#ff5a24] hover:underline">00-writing-style-guide.md</a>.</div>
+    </div>
+  </footer>
+</div>
+
+<script>
+  const { createApp, h } = Vue;
+
+  // ============ TILE VISUAL COMPONENTS (animated) ============
+  // Each visual is a render function. mounted() starts a GSAP timeline that drives a realistic
+  // Builder-edit → Anti-Drift-detect → ticket cycle on the rendered DOM.
+
+  function legendDot(color, label) {
+    return h('div', { class: 'flex items-center gap-1.5' }, [
+      h('span', { class: 'w-2 h-2 rounded-full', style: `background-color: ${color};` }),
+      h('span', {}, label)
+    ]);
+  }
+
+  // ---------- ChainColumnTiles (14 cols × 6 rows = 84 cells) ----------
+  const ChainColumnTiles = {
+    props: ['spec', 'chain'],
+    data() { return { phase: 'idle', drift: 0 }; },
+    mounted() {
+      this.$nextTick(() => {
+        const s = () => requestAnimationFrame(() => requestAnimationFrame(() => this.animate()));
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(s); else s();
+      });
+    },
+    beforeUnmount() { if (this.tl) this.tl.kill(); },
+    methods: {
+      animate() {
+        if (typeof gsap === 'undefined' || prefersReducedMotion) return;
+        const root = this.$el;
+        const cells = Array.from(root.querySelectorAll('[data-cell]'));
+        if (!cells.length) return;
+        const cellAt = (c, r) => cells.find(el => el.dataset.col == c && el.dataset.row == r);
+        const edits = [[3, 2], [7, 4], [11, 1], [5, 3]];
+        const driftAt = [[1, 0], [2, 5], [6, 1], [6, 4], [9, 3], [12, 2], [13, 0], [13, 5], [10, 4]];
+        const tl = gsap.timeline({ repeat: -1, repeatDelay: 1.8, defaults: { ease: 'power2.out' } });
+        tl.set(cells, { backgroundColor: '#9aa847', scale: 1, rotation: 0 })
+          .call(() => { this.phase = 'builder editing'; this.drift = 0; });
+        edits.forEach(([c, r], i) => {
+          const cell = cellAt(c, r);
+          if (!cell) return;
+          tl.to(cell, { backgroundColor: '#ff5a24', scale: 1.4, duration: 0.25 }, i === 0 ? '+=0.3' : '+=0.45')
+            .call(() => spawnPing(root, cell, '#ff5a24', 2.2));
+          const neighbors = [cellAt(c, r - 1), cellAt(c, r + 1), cellAt(c - 1, r), cellAt(c + 1, r)].filter(Boolean);
+          tl.to(neighbors, { backgroundColor: '#d49a3a', scale: 1.18, duration: 0.25 }, '+=0.15')
+            .to(neighbors, { scale: 1, duration: 0.2 });
+          tl.to(cell, { backgroundColor: '#9aa847', scale: 1, duration: 0.3 }, '+=0.1');
+        });
+        tl.call(() => { this.phase = 'drift exposed'; });
+        const driftCells = driftAt.map(([c, r]) => cellAt(c, r)).filter(Boolean);
+        tl.to(driftCells, {
+          backgroundColor: '#d04a2a', scale: 1.25, duration: 0.3,
+          stagger: { each: 0.05, from: 'random' }
+        }, '+=0.3');
+        tl.to(driftCells, {
+          rotation: -3, duration: 0.07, yoyo: true, repeat: 3,
+          stagger: { each: 0.03, from: 'random' }
+        }, '+=0.05');
+        tl.to(driftCells, { rotation: 0, scale: 1, duration: 0.25 })
+          .call(() => { this.drift = driftCells.length; this.phase = 'anti-drift sweep'; });
+        // Anti-Drift sweeps: highlight ring on each drift cell
+        driftCells.forEach((cell, i) => {
+          tl.call(() => spawnPing(root, cell, '#0ea5e9', 2.0), null, i === 0 ? '+=0.4' : '+=0.05');
+        });
+        tl.call(() => { this.phase = 'tickets'; });
+        tl.to({}, { duration: 2.0 });
+        // Reset
+        tl.to([...driftCells, ...edits.map(([c, r]) => cellAt(c, r)).filter(Boolean)], {
+          backgroundColor: '#9aa847', scale: 1, rotation: 0, duration: 0.6,
+          stagger: { each: 0.02, from: 'edges' }
+        }, '+=0.3').call(() => { this.drift = 0; this.phase = 'idle'; });
+        this.tl = tl;
+      }
+    },
+    render() {
+      const cols = this.chain || [];
+      const rowsPerCol = 6;
+      return h('div', { class: 'rounded-md border border-black/10 bg-[#fafaf7] p-3 relative overflow-hidden' }, [
+        h('div', { class: 'grid gap-1', style: 'grid-template-columns: repeat(14, minmax(0, 1fr));' },
+          cols.map((c, ci) => h('div', { class: 'flex flex-col gap-1' }, [
+            h('div', { class: 'text-[0.55rem] uppercase tracking-wider text-[#7a7a7a] text-center mb-1 truncate', title: c.label }, c.label),
+            ...Array.from({ length: rowsPerCol }, (_, ri) =>
+              h('div', {
+                'data-cell': true,
+                'data-col': ci,
+                'data-row': ri,
+                class: 'h-4 rounded-sm',
+                style: 'background-color: #9aa847; box-shadow: inset 0 1px 0 rgba(255,255,255,0.4); will-change: transform, background-color;'
+              })
+            )
+          ]))
+        ),
+        h('div', { class: 'mt-4 flex gap-4 text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] flex-wrap items-center' }, [
+          legendDot('#9aa847', 'synced'),
+          legendDot('#ff5a24', 'builder edit'),
+          legendDot('#d49a3a', '1-hop propagation'),
+          legendDot('#d04a2a', 'drift'),
+          legendDot('#0ea5e9', 'anti-drift scan'),
+          h('span', { class: 'ml-auto font-mono normal-case tracking-normal text-[#4c4c4c]' }, `phase: ${this.phase} · drift: ${this.drift}`)
+        ])
+      ]);
+    }
+  };
+
+  // ---------- TileHeatmap (5 folders × 16 cells) ----------
+  const TileHeatmap = {
+    props: ['spec'],
+    data() { return { touches: 0 }; },
+    mounted() {
+      this.$nextTick(() => {
+        const s = () => requestAnimationFrame(() => requestAnimationFrame(() => this.animate()));
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(s); else s();
+      });
+    },
+    beforeUnmount() { if (this.tl) this.tl.kill(); },
+    methods: {
+      animate() {
+        if (typeof gsap === 'undefined' || prefersReducedMotion) return;
+        const root = this.$el;
+        const cells = Array.from(root.querySelectorAll('[data-hm]'));
+        if (!cells.length) return;
+        const cellAt = (b, c) => cells.find(el => el.dataset.bucket == b && el.dataset.col == c);
+        // Sequence of (bucket, col) touches building a fingerprint
+        const seq = [
+          [0, 2], [0, 3], [0, 4], [0, 5], [0, 6],
+          [1, 9], [1, 10],
+          [2, 1], [2, 2], [2, 3], [2, 4], [2, 5],
+          [0, 12], [0, 13],
+          [3, 7], [3, 8],
+          [4, 0], [4, 1]
+        ];
+        const tl = gsap.timeline({ repeat: -1, repeatDelay: 2 });
+        tl.set(cells, { backgroundColor: 'rgba(17,17,17,0.05)' })
+          .call(() => { this.touches = 0; });
+        seq.forEach(([b, c], i) => {
+          const cell = cellAt(b, c);
+          if (!cell) return;
+          // Builder touches: bright orange flash then settle to a touch-intensity tone
+          tl.to(cell, { backgroundColor: '#ff5a24', duration: 0.18, ease: 'power2.out' }, i === 0 ? '+=0.2' : '+=0.18')
+            .to(cell, { backgroundColor: 'rgba(17,17,17,0.55)', duration: 0.35 }, '+=0.05')
+            .call(() => { this.touches++; });
+        });
+        // Idle pulse on the busiest cluster
+        tl.to({}, { duration: 1.6 });
+        // Anti-Drift identifies a hotspot
+        const hotspot = cellAt(0, 4);
+        if (hotspot) {
+          tl.call(() => spawnPing(root, hotspot, '#0ea5e9', 2.8));
+          tl.to(hotspot, { backgroundColor: '#0ea5e9', duration: 0.3 }, '+=0.1')
+            .to(hotspot, { backgroundColor: 'rgba(17,17,17,0.55)', duration: 0.4 }, '+=0.5');
+        }
+        tl.to({}, { duration: 1.8 });
+        this.tl = tl;
+      }
+    },
+    render() {
+      const buckets = ['src/server', 'src/api', 'src/components', 'docs', 'infra'];
+      return h('div', { class: 'rounded-md border border-black/10 bg-[#fafaf7] p-3 relative overflow-hidden' }, [
+        h('div', { class: 'space-y-2' },
+          buckets.map((b, bi) => h('div', { class: 'flex items-center gap-3' }, [
+            h('div', { class: 'w-24 sm:w-32 text-[0.6rem] uppercase tracking-wider text-[#7a7a7a] truncate font-mono' }, b),
+            h('div', { class: 'flex-1 grid gap-1', style: 'grid-template-columns: repeat(16, minmax(0, 1fr));' },
+              Array.from({ length: 16 }, (_, ci) => h('div', {
+                'data-hm': true,
+                'data-bucket': bi,
+                'data-col': ci,
+                class: 'aspect-square rounded-sm',
+                style: 'background-color: rgba(17,17,17,0.05); will-change: background-color;'
+              }))
+            )
+          ]))
+        ),
+        h('div', { class: 'mt-4 flex gap-4 text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] flex-wrap items-center' }, [
+          legendDot('#ff5a24', 'builder touch'),
+          legendDot('rgba(17,17,17,0.55)', 'recorded'),
+          legendDot('#0ea5e9', 'hotspot flagged'),
+          h('span', { class: 'ml-auto font-mono normal-case tracking-normal text-[#4c4c4c]' }, `touches: ${this.touches}`)
+        ])
+      ]);
+    }
+  };
+
+  // ---------- EvalStatusMatrix (8 transitions × 5 runs) ----------
+  const EvalStatusMatrix = {
+    props: ['spec'],
+    data() { return { run: 0, fails: 0 }; },
+    mounted() {
+      this.$nextTick(() => {
+        const s = () => requestAnimationFrame(() => requestAnimationFrame(() => this.animate()));
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(s); else s();
+      });
+    },
+    beforeUnmount() { if (this.tl) this.tl.kill(); },
+    methods: {
+      animate() {
+        if (typeof gsap === 'undefined' || prefersReducedMotion) return;
+        const root = this.$el;
+        const cells = Array.from(root.querySelectorAll('[data-eval]'));
+        const tray = root.querySelector('[data-eval-tray]');
+        if (!cells.length) return;
+        const cellAt = (t, r) => cells.find(el => el.dataset.t == t && el.dataset.r == r);
+        // Per-run failure pattern (drift accumulates then partially recovers)
+        const runs = [
+          { fails: [], warns: [] },
+          { fails: [3], warns: [1] },
+          { fails: [3, 6], warns: [1, 4] },
+          { fails: [3, 5, 6], warns: [1, 2, 7] },
+          { fails: [5], warns: [3] }
+        ];
+        const tl = gsap.timeline({ repeat: -1, repeatDelay: 1.8 });
+        tl.set(cells, { backgroundColor: '#dcd9d2' })
+          .call(() => { this.run = 0; this.fails = 0; if (tray) tray.innerHTML = ''; });
+        runs.forEach((rdef, ri) => {
+          tl.call(() => { this.run = ri + 1; });
+          for (let ti = 0; ti < 8; ti++) {
+            const cell = cellAt(ti, ri);
+            if (!cell) continue;
+            let color = '#9aa847';
+            if (rdef.fails.includes(ti)) color = '#d04a2a';
+            else if (rdef.warns.includes(ti)) color = '#d49a3a';
+            tl.to(cell, { backgroundColor: color, duration: 0.15 }, ti === 0 ? '+=0.25' : '+=0.05');
+          }
+          // After each run, count failures
+          tl.call(() => { this.fails = rdef.fails.length; });
+        });
+        // On the run with most failures (run 3), Anti-Drift emits tickets from each failed cell to the tray
+        const run3 = runs[3];
+        run3.fails.forEach((ti, i) => {
+          const failCell = cellAt(ti, 3);
+          if (failCell && tray) {
+            tl.call(() => {
+              spawnPing(root, failCell, '#0ea5e9', 2.4);
+              flyTicket(root, failCell, tray, `eval ${ti} failed`, '#d04a2a');
+            }, null, `+=${i === 0 ? 0.4 : 0.2}`);
+          }
+        });
+        tl.to({}, { duration: 2.2 });
+        this.tl = tl;
+      }
+    },
+    render() {
+      const transitions = [
+        'requirements ↔ schema',
+        'schema ↔ migrations',
+        'controllers ↔ routers',
+        'routers ↔ api_specs',
+        'components ↔ pages',
+        'pages ↔ docs',
+        'controllers ↔ docs',
+        'schema ↔ training'
+      ];
+      const runs = 5;
+      return h('div', { class: 'rounded-md border border-black/10 bg-[#fafaf7] p-3 relative overflow-hidden' }, [
+        h('div', { 'data-eval-tray': true, class: 'absolute top-2 right-2 w-24 pointer-events-none' }),
+        h('table', { class: 'w-full text-sm' }, [
+          h('thead', {}, [
+            h('tr', { class: 'text-[0.6rem] uppercase tracking-wider text-[#7a7a7a]' }, [
+              h('th', { class: 'text-left font-normal pb-2 pr-3' }, 'Transition'),
+              ...Array.from({ length: runs }, (_, i) => h('th', { class: 'font-normal pb-2 px-1' }, `run ${i + 1}`))
+            ])
+          ]),
+          h('tbody', {},
+            transitions.map((t, ti) => h('tr', { class: 'border-t border-black/5' }, [
+              h('td', { class: 'py-2 pr-3 text-[#252525] text-xs sm:text-sm' }, t),
+              ...Array.from({ length: runs }, (_, ri) => h('td', { class: 'py-2 px-1' }, [
+                h('div', {
+                  'data-eval': true,
+                  'data-t': ti,
+                  'data-r': ri,
+                  class: 'h-6 rounded-sm',
+                  style: 'background-color: #dcd9d2; will-change: background-color;'
+                })
+              ]))
+            ]))
+          )
+        ]),
+        h('div', { class: 'mt-4 flex gap-4 text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] flex-wrap items-center' }, [
+          legendDot('#9aa847', 'pass'),
+          legendDot('#d49a3a', 'warn'),
+          legendDot('#d04a2a', 'fail'),
+          legendDot('#dcd9d2', 'no eval'),
+          h('span', { class: 'ml-auto font-mono normal-case tracking-normal text-[#4c4c4c]' }, `run ${this.run}/${runs} · failures ${this.fails}`)
+        ])
+      ]);
+    }
+  };
+
+  // ---------- CommitTimelineTiles ----------
+  const CommitTimelineTiles = {
+    props: ['spec', 'chain'],
+    data() { return { commits: 0, coverage: 0 }; },
+    mounted() {
+      this.$nextTick(() => {
+        const s = () => requestAnimationFrame(() => requestAnimationFrame(() => this.animate()));
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(s); else s();
+      });
+    },
+    beforeUnmount() { if (this.tl) this.tl.kill(); },
+    methods: {
+      animate() {
+        if (typeof gsap === 'undefined' || prefersReducedMotion) return;
+        const root = this.$el;
+        const commitCards = Array.from(root.querySelectorAll('[data-commit]'));
+        if (!commitCards.length) return;
+        const covered = [
+          [3, 4, 12], [1, 2, 3], [5, 3], [13, 1, 9], [10, 11], [3, 12]
+        ];
+        const tl = gsap.timeline({ repeat: -1, repeatDelay: 2.4 });
+        const cumulative = new Set();
+        // Reset
+        tl.set(commitCards, { opacity: 0, y: -16, scale: 0.98 })
+          .call(() => { this.commits = 0; this.coverage = 0; });
+        commitCards.forEach((card, i) => {
+          tl.to(card, { opacity: 1, y: 0, scale: 1, duration: 0.45, ease: 'back.out(1.6)' }, i === 0 ? '+=0.2' : '+=0.35')
+            .call(() => { this.commits = i + 1; });
+          // Light up indicators
+          const indicators = Array.from(card.querySelectorAll('[data-ind]'));
+          covered[i].forEach((linkIdx, j) => {
+            const ind = indicators[linkIdx];
+            if (ind) {
+              tl.to(ind, { backgroundColor: '#9aa847', scale: 1.4, duration: 0.18 }, '<+=0.15')
+                .to(ind, { scale: 1, duration: 0.18 });
+            }
+            cumulative.add(linkIdx);
+          });
+          tl.call(() => { this.coverage = cumulative.size; });
+        });
+        tl.to({}, { duration: 2.5 });
+        this.tl = tl;
+      }
+    },
+    render() {
+      const commits = [
+        { msg: 'wire openapi to new /reports route', covered: [3, 4, 12] },
+        { msg: 'add reports_summary column + migration', covered: [1, 2, 3] },
+        { msg: 'fix middleware regression for trial users', covered: [5, 3] },
+        { msg: 'update onboarding training for new fields', covered: [13, 1, 9] },
+        { msg: 'pin cdn version for support assets', covered: [10, 11] },
+        { msg: 'add eval scaffolding for route ↔ openapi', covered: [3, 12] }
+      ];
+      return h('div', { class: 'rounded-md border border-black/10 bg-[#fafaf7] p-3 space-y-2 relative overflow-hidden' }, [
+        ...commits.map((c, i) => h('div', {
+          'data-commit': true,
+          class: 'rounded-md border border-black/10 bg-white/85 p-3'
+        }, [
+          h('div', { class: 'flex items-baseline justify-between gap-3' }, [
+            h('div', { class: 'text-sm text-[#252525] flex-1 truncate' }, c.msg),
+            h('div', { class: 'text-[0.6rem] uppercase tracking-wider text-[#7a7a7a]' }, `commit ${i + 1}`)
+          ]),
+          h('div', { class: 'mt-2 grid gap-1', style: 'grid-template-columns: repeat(14, minmax(0, 1fr));' },
+            Array.from({ length: 14 }, (_, li) => h('div', {
+              'data-ind': true,
+              class: 'h-2 rounded-sm',
+              style: 'background-color: #dcd9d2; will-change: background-color, transform;'
+            }))
+          )
+        ])),
+        h('div', { class: 'flex gap-4 text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] flex-wrap items-center mt-2' }, [
+          legendDot('#9aa847', 'link named'),
+          legendDot('#dcd9d2', 'not named'),
+          h('span', { class: 'ml-auto font-mono normal-case tracking-normal text-[#4c4c4c]' }, `commits ${this.commits}/6 · coverage ${this.coverage}/14`)
+        ])
+      ]);
+    }
+  };
+
+  // ---------- PerFileTreeCard ----------
+  const PerFileTreeCard = {
+    props: ['spec'],
+    data() { return { phase: 'idle' }; },
+    mounted() {
+      this.$nextTick(() => {
+        const s = () => requestAnimationFrame(() => requestAnimationFrame(() => this.animate()));
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(s); else s();
+      });
+    },
+    beforeUnmount() { if (this.tl) this.tl.kill(); },
+    methods: {
+      animate() {
+        if (typeof gsap === 'undefined' || prefersReducedMotion) return;
+        const root = this.$el;
+        const focus = root.querySelector('[data-focus]');
+        const ups = Array.from(root.querySelectorAll('[data-up] [data-dot]'));
+        const downs = Array.from(root.querySelectorAll('[data-down] [data-dot]'));
+        const upRows = Array.from(root.querySelectorAll('[data-up]'));
+        const downRows = Array.from(root.querySelectorAll('[data-down]'));
+        if (!focus) return;
+        const tl = gsap.timeline({ repeat: -1, repeatDelay: 2 });
+        tl.set([...ups, ...downs], { backgroundColor: '#dcd9d2' })
+          .call(() => { this.phase = 'idle'; });
+        // Builder edits focus
+        tl.call(() => { this.phase = 'builder edits focus'; });
+        tl.fromTo(focus, { boxShadow: '0 18px 45px rgba(0,0,0,0.16)' }, { boxShadow: '0 0 0 4px #ff5a24, 0 18px 45px rgba(0,0,0,0.16)', duration: 0.3 }, '+=0.4')
+          .call(() => spawnPing(root, focus, '#ff5a24', 1.6))
+          .to(focus, { boxShadow: '0 18px 45px rgba(0,0,0,0.16)', duration: 0.4 }, '+=0.5');
+        // Walker checks upstream
+        tl.call(() => { this.phase = 'checking upstream'; });
+        ups.forEach((dot, i) => {
+          tl.to(dot, { backgroundColor: '#0ea5e9', duration: 0.2 }, '+=0.18')
+            .to(dot, { backgroundColor: i === 2 ? '#d49a3a' : '#9aa847', duration: 0.25 }, '+=0.15');
+        });
+        // Walker checks downstream
+        tl.call(() => { this.phase = 'checking downstream'; });
+        downs.forEach((dot, i) => {
+          let final = '#9aa847';
+          if (i === 2 || i === 3) final = '#d04a2a';
+          tl.to(dot, { backgroundColor: '#0ea5e9', duration: 0.2 }, '+=0.18')
+            .to(dot, { backgroundColor: final, duration: 0.25 }, '+=0.15');
+        });
+        // Ticket emerges from a failed downstream
+        tl.call(() => { this.phase = 'ticket filed'; });
+        const failedRow = downRows[2];
+        if (failedRow) {
+          tl.call(() => spawnPing(root, failedRow, '#d04a2a', 1.4), null, '+=0.2');
+        }
+        tl.to({}, { duration: 2.0 });
+        this.tl = tl;
+      }
+    },
+    render() {
+      const upstream = ['requirements/reports.md', 'db/schema.sql', 'db/migrations/0042_reports.sql'];
+      const downstream = ['src/routes/reports.ts', 'src/components/ReportsTable.vue', 'docs/reports.md', 'training/reports-launch.md'];
+      const row = (label, attr) => h('div', {
+        [attr]: true,
+        class: 'rounded-md border border-black/10 bg-white/85 p-3 flex items-center gap-3'
+      }, [
+        h('div', { 'data-dot': true, class: 'w-2 h-2 rounded-full', style: 'background-color: #dcd9d2; will-change: background-color;' }),
+        h('div', { class: 'font-mono text-xs text-[#252525] truncate' }, label)
+      ]);
+      return h('div', { class: 'rounded-md border border-black/10 bg-[#fafaf7] p-3 relative overflow-hidden' }, [
+        h('div', { class: 'text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] mb-2' }, 'upstream'),
+        h('div', { class: 'grid gap-1.5' }, upstream.map(u => row(u, 'data-up'))),
+        h('div', {
+          'data-focus': true,
+          class: 'my-3 rounded-md bg-[#111111] text-white p-3 flex items-center gap-3',
+          style: 'box-shadow: 0 18px 45px rgba(0,0,0,0.16); will-change: box-shadow;'
+        }, [
+          h('div', { class: 'serif italic text-[#ff6330] text-base' }, 'focus'),
+          h('div', { class: 'font-mono text-sm break-all' }, 'src/controllers/reports.ts')
+        ]),
+        h('div', { class: 'text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] mb-2' }, 'downstream'),
+        h('div', { class: 'grid gap-1.5' }, downstream.map(d => row(d, 'data-down'))),
+        h('div', { class: 'mt-4 flex gap-4 text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] flex-wrap items-center' }, [
+          legendDot('#9aa847', 'consistent'),
+          legendDot('#d49a3a', 'stale'),
+          legendDot('#d04a2a', 'broken'),
+          legendDot('#0ea5e9', 'checking'),
+          h('span', { class: 'ml-auto font-mono normal-case tracking-normal text-[#4c4c4c]' }, `phase: ${this.phase}`)
+        ])
+      ]);
+    }
+  };
+
+  // ---------- PerLinkHealthPills ----------
+  const PerLinkHealthPills = {
+    props: ['spec', 'chain'],
+    data() { return { turn: 0, blocked: 0 }; },
+    mounted() {
+      this.$nextTick(() => {
+        const s = () => requestAnimationFrame(() => requestAnimationFrame(() => this.animate()));
+        if (document.fonts && document.fonts.ready) document.fonts.ready.then(s); else s();
+      });
+    },
+    beforeUnmount() { if (this.tl) this.tl.kill(); },
+    methods: {
+      animate() {
+        if (typeof gsap === 'undefined' || prefersReducedMotion) return;
+        const root = this.$el;
+        const pills = Array.from(root.querySelectorAll('[data-pill]'));
+        const histCells = Array.from(root.querySelectorAll('[data-hist]'));
+        if (!pills.length) return;
+        const histAt = (turn, link) => histCells.find(el => el.dataset.turn == turn && el.dataset.link == link);
+        // Per-turn patterns: { warn: [...], fail: [...] }
+        const turns = [
+          { warn: [4], fail: [] },
+          { warn: [2, 11], fail: [4] },
+          { warn: [9], fail: [2, 4] },
+          { warn: [3, 9], fail: [4, 12] },
+          { warn: [], fail: [4, 12] }
+        ];
+        const tl = gsap.timeline({ repeat: -1, repeatDelay: 2 });
+        tl.set(pills, { backgroundColor: '#9aa847' })
+          .set(histCells, { backgroundColor: '#dcd9d2' })
+          .call(() => { this.turn = 0; this.blocked = 0; });
+        turns.forEach((tdef, ti) => {
+          tl.call(() => { this.turn = ti + 1; });
+          // Top pill row reflects the latest state
+          for (let li = 0; li < 14; li++) {
+            const pill = pills[li];
+            if (!pill) continue;
+            let color = '#9aa847';
+            if (tdef.fail.includes(li)) color = '#d04a2a';
+            else if (tdef.warn.includes(li)) color = '#d49a3a';
+            tl.to(pill, { backgroundColor: color, duration: 0.14 }, li === 0 ? '+=0.25' : '+=0.03');
+            // Mirror into the history row for this turn
+            const hCell = histAt(ti, li);
+            if (hCell) tl.to(hCell, { backgroundColor: color, duration: 0.14 }, '<');
+          }
+          tl.call(() => { this.blocked = tdef.fail.length; });
+          tl.to({}, { duration: 0.4 });
+        });
+        // Anti-Drift sweep: ping each failed pill from latest turn
+        const finalFails = turns[turns.length - 1].fail;
+        finalFails.forEach((li, i) => {
+          tl.call(() => spawnPing(root, pills[li], '#0ea5e9', 2.4), null, i === 0 ? '+=0.4' : '+=0.18');
+        });
+        tl.to({}, { duration: 2.0 });
+        this.tl = tl;
+      }
+    },
+    render() {
+      const chain = this.chain || [];
+      const turns = 5;
+      return h('div', { class: 'rounded-md border border-black/10 bg-[#fafaf7] p-3 relative overflow-hidden' }, [
+        h('div', { class: 'grid gap-1 mb-3', style: 'grid-template-columns: repeat(14, minmax(0, 1fr));' },
+          chain.map((c, i) => h('div', { class: 'flex flex-col items-center gap-1' }, [
+            h('div', {
+              'data-pill': true,
+              'data-link': i,
+              class: 'h-6 w-full rounded-full',
+              style: 'background-color: #9aa847; will-change: background-color;'
+            }),
+            h('div', { class: 'text-[0.5rem] uppercase tracking-wider text-[#7a7a7a] text-center truncate w-full', title: c.label }, c.label)
+          ]))
+        ),
+        h('div', { class: 'text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] mt-4 mb-2' }, 'history (latest at top)'),
+        h('div', { class: 'space-y-1' },
+          Array.from({ length: turns }, (_, j) => h('div', { class: 'grid gap-1', style: 'grid-template-columns: repeat(14, minmax(0, 1fr));' },
+            Array.from({ length: 14 }, (_, i) => h('div', {
+              'data-hist': true,
+              'data-turn': j,
+              'data-link': i,
+              class: 'h-4 rounded-full',
+              style: 'background-color: #dcd9d2; will-change: background-color;'
+            }))
+          ))
+        ),
+        h('div', { class: 'mt-4 flex gap-4 text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] flex-wrap items-center' }, [
+          legendDot('#9aa847', 'clean'),
+          legendDot('#d49a3a', 'warnings'),
+          legendDot('#d04a2a', 'block-worthy'),
+          legendDot('#0ea5e9', 'sweep'),
+          h('span', { class: 'ml-auto font-mono normal-case tracking-normal text-[#4c4c4c]' }, `turn ${this.turn}/5 · blocking ${this.blocked}`)
+        ])
+      ]);
+    }
+  };
+
+  // ============ ANIMATED SIMULATORS (GSAP) ============
+
+  const prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  // Shared helper: spawn a ring "ping" centered over an element, fading outward
+  function spawnPing(rootEl, targetEl, color, scale) {
+    if (!rootEl || !targetEl || typeof gsap === 'undefined') return;
+    const rect = targetEl.getBoundingClientRect();
+    const rootRect = rootEl.getBoundingClientRect();
+    const ping = document.createElement('div');
+    ping.style.cssText = `
+      position: absolute;
+      left: ${rect.left - rootRect.left}px;
+      top: ${rect.top - rootRect.top}px;
+      width: ${rect.width}px;
+      height: ${rect.height}px;
+      border-radius: 6px;
+      border: 2px solid ${color};
+      pointer-events: none;
+      opacity: 0.85;
+      z-index: 5;
+      transform-origin: center;
+    `;
+    rootEl.appendChild(ping);
+    gsap.to(ping, {
+      scale: scale || 2.6,
+      opacity: 0,
+      duration: 0.85,
+      ease: 'power2.out',
+      onComplete: () => ping.remove()
+    });
+  }
+
+  // Shared helper: spawn a small ticket card that flies from a source to a target
+  function flyTicket(rootEl, fromEl, toEl, text, color) {
+    if (!rootEl || !fromEl || !toEl || typeof gsap === 'undefined') return;
+    const fr = fromEl.getBoundingClientRect();
+    const tr = toEl.getBoundingClientRect();
+    const rootRect = rootEl.getBoundingClientRect();
+    const ticket = document.createElement('div');
+    ticket.style.cssText = `
+      position: absolute;
+      left: ${fr.left - rootRect.left + fr.width / 2 - 60}px;
+      top: ${fr.top - rootRect.top + fr.height / 2 - 12}px;
+      width: 120px;
+      padding: 4px 6px;
+      background: white;
+      border: 1px solid rgba(0,0,0,0.1);
+      border-left: 3px solid ${color || '#d04a2a'};
+      border-radius: 4px;
+      font-family: ui-monospace, monospace;
+      font-size: 0.55rem;
+      color: #111;
+      pointer-events: none;
+      opacity: 0;
+      z-index: 9;
+      box-shadow: 0 8px 22px rgba(0,0,0,0.18);
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    `;
+    ticket.textContent = text;
+    rootEl.appendChild(ticket);
+    const targetX = tr.left - rootRect.left + tr.width / 2 - 60;
+    const targetY = tr.top - rootRect.top - 4;
+    gsap.timeline({ onComplete: () => ticket.remove() })
+      .to(ticket, { opacity: 1, duration: 0.2 })
+      .to(ticket, { x: targetX - (fr.left - rootRect.left + fr.width / 2 - 60), y: targetY - (fr.top - rootRect.top + fr.height / 2 - 12), duration: 0.8, ease: 'power2.inOut' }, '<+=0.05')
+      .to(ticket, { opacity: 0, duration: 0.3 }, '-=0.2');
+  }
+
+  // ChainBreakSim: Builder makes 3 edits across the chain; each propagates only 1 hop.
+  // After all edits, the un-propagated links flash red showing accumulated drift.
+  const ChainBreakSim = {
+    props: ['chain'],
+    data() {
+      return { staleCount: 0, turn: 0 };
+    },
+    mounted() {
+      this.$nextTick(() => {
+        const doStart = () => requestAnimationFrame(() => requestAnimationFrame(() => this.start()));
+        if (document.fonts && document.fonts.ready) {
+          document.fonts.ready.then(doStart);
+        } else {
+          doStart();
+        }
+      });
+      window.addEventListener('resize', this.handleResize);
+    },
+    beforeUnmount() {
+      if (this.tl) this.tl.kill();
+      if (this.idleTl) this.idleTl.kill();
+      window.removeEventListener('resize', this.handleResize);
+    },
+    methods: {
+      handleResize() {
+        if (this._resizeTimer) clearTimeout(this._resizeTimer);
+        this._resizeTimer = setTimeout(() => {
+          if (this.tl) this.tl.kill();
+          if (this.idleTl) this.idleTl.kill();
+          this.start();
+        }, 200);
+      },
+      start() {
+        if (typeof gsap === 'undefined') return;
+        const root = this.$el;
+        const links = Array.from(root.querySelectorAll('.sim-link'));
+        const agent = root.querySelector('.sim-agent');
+        const stale = root.querySelector('.cb-stale');
+        if (!links.length || !agent) return;
+
+        const rootRect = () => root.getBoundingClientRect();
+
+        if (prefersReducedMotion) {
+          gsap.set(links, { backgroundColor: '#9aa847' });
+          gsap.set(agent, { opacity: 0 });
+          return;
+        }
+
+        // Idle breathing on synced cells
+        this.idleTl = gsap.to(links, {
+          boxShadow: '0 0 8px rgba(154,168,71,0.35)',
+          duration: 2.2,
+          ease: 'sine.inOut',
+          yoyo: true,
+          repeat: -1,
+          stagger: { each: 0.12, from: 'random' }
+        });
+
+        const placeAgentAt = (idx) => {
+          const linkRect = links[idx].getBoundingClientRect();
+          const rr = rootRect();
+          return linkRect.left - rr.left + (linkRect.width / 2) - (agent.offsetWidth / 2);
+        };
+
+        const edits = [3, 8, 12];
+        const propagated = new Set();
+        edits.forEach(i => { propagated.add(i); propagated.add(i - 1); propagated.add(i + 1); });
+        const staleCells = links.filter((_, i) => !propagated.has(i));
+        const neighborCells = [];
+        edits.forEach(i => {
+          if (links[i - 1]) neighborCells.push(links[i - 1]);
+          if (links[i + 1]) neighborCells.push(links[i + 1]);
+        });
+        const editedCells = edits.map(i => links[i]);
+
+        const tl = gsap.timeline({ repeat: -1, repeatDelay: 1.6, defaults: { ease: 'power2.out' } });
+
+        // Reset
+        tl.set(links, { backgroundColor: '#9aa847', scale: 1, rotation: 0, boxShadow: '0 0 0 rgba(0,0,0,0)' })
+          .set(agent, { opacity: 0, y: -56, x: placeAgentAt(0) })
+          .set(stale, { opacity: 0 })
+          .call(() => { this.staleCount = 0; this.turn = 0; });
+
+        // Builder arrives above first edit
+        tl.to(agent, { opacity: 1, x: placeAgentAt(edits[0]), y: -64, duration: 0.6 }, '+=0.4');
+
+        // Three builder turns
+        edits.forEach((idx, turnNum) => {
+          if (turnNum > 0) {
+            tl.to(agent, { x: placeAgentAt(idx), duration: 0.55, ease: 'power2.inOut' }, '+=0.6');
+          }
+          tl.call(() => { this.turn = turnNum + 1; });
+
+          // Orange pulse + ring ping
+          tl.to(links[idx], { backgroundColor: '#ff5a24', scale: 1.25, duration: 0.3 }, '+=0.1')
+            .call(() => spawnPing(root, links[idx], '#ff5a24', 2.4));
+
+          // Propagate to neighbours
+          const neighbors = [links[idx - 1], links[idx + 1]].filter(Boolean);
+          tl.to(neighbors, { backgroundColor: '#d49a3a', scale: 1.1, duration: 0.3 }, '+=0.2')
+            .to(neighbors, { scale: 1, duration: 0.2 }, '+=0.1');
+
+          // Settle edited cell to synced (synced from its local POV)
+          tl.to(links[idx], { backgroundColor: '#9aa847', scale: 1, duration: 0.35 }, '+=0.1');
+        });
+
+        // Neighbours settle to synced
+        tl.to(neighborCells, { backgroundColor: '#9aa847', duration: 0.3 }, '+=0.2');
+
+        // Builder exits
+        tl.to(agent, { opacity: 0, y: -100, duration: 0.5 }, '+=0.5');
+
+        // Drift exposed: stale cells flash red with wobble
+        tl.to(staleCells, {
+          backgroundColor: '#d04a2a',
+          scale: 1.14,
+          duration: 0.35,
+          stagger: { each: 0.07, from: 'edges' }
+        }, '+=0.3');
+
+        tl.to(staleCells, {
+          rotation: -3,
+          duration: 0.08,
+          yoyo: true,
+          repeat: 3,
+          stagger: { each: 0.04, from: 'edges' }
+        }, '+=0.05');
+
+        tl.to(staleCells, { rotation: 0, scale: 1, duration: 0.3 }, '+=0.1');
+
+        tl.to(stale, { opacity: 1, duration: 0.3 }, '<')
+          .call(() => { this.staleCount = staleCells.length; });
+
+        // Hold for reading
+        tl.to({}, { duration: 2.5 });
+
+        // Fade back to synced
+        tl.to([...staleCells, ...neighborCells, ...editedCells], {
+          backgroundColor: '#9aa847',
+          scale: 1,
+          rotation: 0,
+          duration: 0.7,
+          stagger: { each: 0.02, from: 'edges' }
+        }, '+=0.2');
+        tl.to(stale, { opacity: 0, duration: 0.4 }, '<')
+          .call(() => { this.staleCount = 0; this.turn = 0; });
+
+        this.tl = tl;
+      }
+    },
+    template: `
+      <div class="sim-stage" style="padding-top: 84px; position: relative;">
+        <div class="sim-agent sim-agent-builder">Builder</div>
+        <div class="sim-chain">
+          <div v-for="(link, i) in chain" :key="link.id" class="sim-link tile">
+            <div class="sim-link-num">{{ String(i+1).padStart(2,'0') }}</div>
+            <div class="sim-link-label">{{ link.label }}</div>
+          </div>
+        </div>
+        <div class="mt-5 flex items-center gap-3 flex-wrap">
+          <span class="sim-status-chip border-[#9aa847]/40 bg-[#9aa847]/10 text-[#5f6a26]"><span class="w-1.5 h-1.5 rounded-full bg-[#9aa847]"></span>synced</span>
+          <span class="sim-status-chip border-[#ff5a24]/40 bg-[#ff5a24]/10 text-[#ff5a24]"><span class="w-1.5 h-1.5 rounded-full bg-[#ff5a24]"></span>builder edit</span>
+          <span class="sim-status-chip border-[#d49a3a]/40 bg-[#d49a3a]/10 text-[#a17013]"><span class="w-1.5 h-1.5 rounded-full bg-[#d49a3a]"></span>one-hop propagation</span>
+          <span class="sim-status-chip border-[#d04a2a]/40 bg-[#d04a2a]/10 text-[#d04a2a]"><span class="w-1.5 h-1.5 rounded-full bg-[#d04a2a]"></span>stale</span>
+          <span class="ml-auto text-[0.65rem] uppercase tracking-wider text-[#4c4c4c] font-mono">turn {{ turn }} / 3</span>
+          <span class="cb-stale text-xs uppercase tracking-wider text-[#d04a2a] font-medium" style="opacity:0;">{{ staleCount }} links stale</span>
+        </div>
+      </div>
+    `
+  };
+
+  // WalkerSim: cyan walker script crawls the chain, building bridges
+  const WalkerSim = {
+    props: ['chain'],
+    data() {
+      return { running: !prefersReducedMotion, status: 'idle', bridgesChecked: 0, bridgesFailed: 0 };
+    },
+    mounted() {
+      this.$nextTick(() => {
+        const doStart = () => requestAnimationFrame(() => requestAnimationFrame(() => this.start()));
+        if (document.fonts && document.fonts.ready) {
+          document.fonts.ready.then(doStart);
+        } else {
+          doStart();
+        }
+      });
+      window.addEventListener('resize', this.handleResize);
+    },
+    beforeUnmount() {
+      if (this.tl) this.tl.kill();
+      window.removeEventListener('resize', this.handleResize);
+    },
+    methods: {
+      handleResize() {
+        if (this._resizeTimer) clearTimeout(this._resizeTimer);
+        this._resizeTimer = setTimeout(() => {
+          if (this.tl) this.tl.kill();
+          this.start();
+        }, 200);
+      },
+      start() {
+        if (typeof gsap === 'undefined') return;
+        const root = this.$el;
+        const links = Array.from(root.querySelectorAll('.sim-link'));
+        const walker = root.querySelector('.sim-agent');
+        const bridgeLayer = root.querySelector('.walker-bridges');
+        if (!links.length || !walker || !bridgeLayer) return;
+
+        // Build bridge SVGs between consecutive links, using stroke-dasharray for draw-on animation
+        bridgeLayer.innerHTML = '';
+        const stageRect = root.getBoundingClientRect();
+        const bridges = [];
+        const driftBridges = new Set([3, 9]);
+        for (let i = 0; i < links.length - 1; i++) {
+          const a = links[i].getBoundingClientRect();
+          const b = links[i + 1].getBoundingClientRect();
+          const x1 = a.left - stageRect.left + a.width / 2;
+          const x2 = b.left - stageRect.left + b.width / 2;
+          const top = a.top - stageRect.top - 30;
+          const div = document.createElement('div');
+          div.className = 'sim-bridge';
+          div.style.left = `${x1}px`;
+          div.style.top = `${top}px`;
+          div.style.width = `${x2 - x1}px`;
+          div.style.opacity = '0';
+          const isDrift = driftBridges.has(i);
+          div.innerHTML = `<svg viewBox="0 0 100 22" preserveAspectRatio="none"><path d="M 0 22 Q 50 -2 100 22" stroke="${isDrift ? '#d04a2a' : '#0ea5e9'}" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-dasharray="120" stroke-dashoffset="120" /></svg>`;
+          div.dataset.drift = isDrift ? '1' : '0';
+          bridgeLayer.appendChild(div);
+          bridges.push(div);
+        }
+
+        if (prefersReducedMotion) {
+          gsap.set(bridges, { opacity: 0.9 });
+          bridges.forEach(b => { const p = b.querySelector('path'); if (p) p.setAttribute('stroke-dashoffset', '0'); });
+          this.status = 'complete';
+          this.bridgesChecked = bridges.length;
+          this.bridgesFailed = driftBridges.size;
+          return;
+        }
+
+        const placeWalker = (idx) => {
+          const linkRect = links[idx].getBoundingClientRect();
+          return linkRect.left - stageRect.left + (linkRect.width / 2) - (walker.offsetWidth / 2);
+        };
+
+        const startIdx = 7;
+        const tl = gsap.timeline({ repeat: -1, repeatDelay: 2, defaults: { ease: 'power2.inOut' } });
+
+        // Reset
+        tl.set(links, { backgroundColor: '#9aa847', scale: 1, rotation: 0 })
+          .set(bridges, { opacity: 0 })
+          .call(() => {
+            bridges.forEach(b => { const p = b.querySelector('path'); if (p) p.setAttribute('stroke-dashoffset', '120'); });
+          })
+          .set(walker, { opacity: 0, y: -56, x: placeWalker(startIdx), scale: 1, boxShadow: '0 8px 24px rgba(14,165,233,0.35)' })
+          .call(() => { this.status = 'idle'; this.bridgesChecked = 0; this.bridgesFailed = 0; });
+
+        // Mark the touched link in orange
+        tl.to(links[startIdx], { backgroundColor: '#ff5a24', scale: 1.15, duration: 0.4 }, '+=0.3')
+          .call(() => spawnPing(root, links[startIdx], '#ff5a24', 2.2));
+
+        tl.to(links[startIdx], { scale: 1, duration: 0.25 }, '+=0.2');
+
+        // Walker arrives with glow pulse
+        tl.to(walker, { opacity: 1, y: -64, duration: 0.45 })
+          .call(() => { this.status = 'walking left'; });
+
+        // Walk LEFT, revealing bridges with stroke-draw
+        for (let i = startIdx - 1; i >= 0; i--) {
+          const bridgeIdx = i;
+          const isDrift = driftBridges.has(bridgeIdx);
+          tl.to(walker, { x: placeWalker(i), duration: 0.32, ease: 'power2.inOut' });
+          tl.set(bridges[bridgeIdx], { opacity: 1 }, '<+=0.1');
+          const path = bridges[bridgeIdx].querySelector('path');
+          if (path) {
+            tl.to(path, { strokeDashoffset: 0, duration: 0.35, ease: 'power1.out' }, '<');
+          }
+          if (isDrift) {
+            tl.to(bridges[bridgeIdx], { x: -3, duration: 0.06, yoyo: true, repeat: 5 }, '+=0.05')
+              .set(bridges[bridgeIdx], { x: 0 });
+          }
+          tl.call(() => {
+            this.bridgesChecked++;
+            if (isDrift) this.bridgesFailed++;
+          });
+        }
+
+        // Walk back to start
+        tl.to(walker, { x: placeWalker(startIdx), duration: 0.55 }, '+=0.2')
+          .call(() => { this.status = 'walking right'; });
+
+        // Walk RIGHT
+        for (let i = startIdx + 1; i < links.length; i++) {
+          const bridgeIdx = i - 1;
+          const isDrift = driftBridges.has(bridgeIdx);
+          tl.to(walker, { x: placeWalker(i), duration: 0.32, ease: 'power2.inOut' });
+          tl.set(bridges[bridgeIdx], { opacity: 1 }, '<+=0.1');
+          const path = bridges[bridgeIdx].querySelector('path');
+          if (path) {
+            tl.to(path, { strokeDashoffset: 0, duration: 0.35, ease: 'power1.out' }, '<');
+          }
+          if (isDrift) {
+            tl.to(bridges[bridgeIdx], { x: -3, duration: 0.06, yoyo: true, repeat: 5 }, '+=0.05')
+              .set(bridges[bridgeIdx], { x: 0 });
+          }
+          tl.call(() => {
+            this.bridgesChecked++;
+            if (isDrift) this.bridgesFailed++;
+          });
+        }
+
+        // Walker exits
+        tl.to(walker, { opacity: 0, y: -96, duration: 0.45 }, '+=0.5')
+          .call(() => { this.status = 'complete'; });
+
+        // Hold for the user to read the bridge map
+        tl.to({}, { duration: 2.6 });
+
+        this.tl = tl;
+      }
+    },
+    template: `
+      <div class="sim-stage" style="padding-top: 64px;">
+        <div class="walker-bridges" style="position:absolute; top:0; left:0; right:0; height:64px; pointer-events:none;"></div>
+        <div class="sim-agent sim-agent-walker">walker.mjs</div>
+        <div class="sim-chain">
+          <div v-for="(link, i) in chain" :key="link.id" class="sim-link tile">
+            <div class="sim-link-num">{{ String(i+1).padStart(2,'0') }}</div>
+            <div class="sim-link-label">{{ link.label }}</div>
+          </div>
+        </div>
+        <div class="mt-5 flex items-center gap-3 flex-wrap">
+          <span class="sim-status-chip border-[#0ea5e9]/40 bg-[#0ea5e9]/10 text-[#0369a1]"><span class="w-1.5 h-1.5 rounded-full bg-[#0ea5e9]"></span>bridge ok</span>
+          <span class="sim-status-chip border-[#d04a2a]/40 bg-[#d04a2a]/10 text-[#d04a2a]"><span class="w-1.5 h-1.5 rounded-full bg-[#d04a2a]"></span>bridge failed</span>
+          <span class="sim-status-chip border-[#ff5a24]/40 bg-[#ff5a24]/10 text-[#ff5a24]"><span class="w-1.5 h-1.5 rounded-full bg-[#ff5a24]"></span>touched link</span>
+          <span class="ml-auto text-xs uppercase tracking-wider text-[#4c4c4c] font-mono">status: {{ status }} · bridges checked {{ bridgesChecked }} · failed {{ bridgesFailed }}</span>
+        </div>
+      </div>
+    `
+  };
+
+  // AntiDriftBoard: features × chain grid. Builder LLM edits cells across rows.
+  // Anti-Drift agent runs a slow sweep every N turns and accumulates tickets.
+  const AntiDriftBoard = {
+    props: ['chain'],
+    data() {
+      return {
+        features: [
+          { id: 'auth', label: 'User Auth' },
+          { id: 'reports', label: 'Reports' },
+          { id: 'billing', label: 'Billing' },
+          { id: 'onboarding', label: 'Onboarding' },
+          { id: 'notifications', label: 'Notifications' },
+          { id: 'admin', label: 'Admin' }
+        ],
+        cycle: 0,
+        cycleMax: 5,
+        tickets: [],
+        phase: 'builder'
+      };
+    },
+    mounted() {
+      this.$nextTick(() => {
+        const doStart = () => requestAnimationFrame(() => requestAnimationFrame(() => this.start()));
+        if (document.fonts && document.fonts.ready) {
+          document.fonts.ready.then(doStart);
+        } else {
+          doStart();
+        }
+      });
+      window.addEventListener('resize', this.handleResize);
+    },
+    beforeUnmount() {
+      if (this.tl) this.tl.kill();
+      window.removeEventListener('resize', this.handleResize);
+    },
+    methods: {
+      handleResize() {
+        if (this._resizeTimer) clearTimeout(this._resizeTimer);
+        this._resizeTimer = setTimeout(() => {
+          if (this.tl) this.tl.kill();
+          this.start();
+        }, 200);
+      },
+      cellAt(featureIdx, linkIdx) {
+        return this.$el.querySelector(`.sim-cell[data-r="${featureIdx}"][data-c="${linkIdx}"]`);
+      },
+      cellsForRow(featureIdx) {
+        return Array.from(this.$el.querySelectorAll(`.sim-cell[data-r="${featureIdx}"]`));
+      },
+      start() {
+        const builder = this.$el.querySelector('.sim-agent-builder');
+        const antidrift = this.$el.querySelector('.sim-agent-antidrift');
+        const beam = this.$el.querySelector('.sim-scan-beam');
+        const allCells = Array.from(this.$el.querySelectorAll('.sim-cell'));
+        const board = this.$el.querySelector('.sim-board');
+        if (!builder || !antidrift || !beam || !board || !allCells.length) return;
+
+        if (prefersReducedMotion) {
+          gsap.set(allCells, { backgroundColor: '#d8d6cf' });
+          this.phase = 'idle';
+          return;
+        }
+
+        // Plan: each Builder turn touches a feature at some link, with one hop of propagation.
+        // After cycleMax Builder turns, Anti-Drift sweeps and produces tickets where drift accumulated.
+        const builderTurns = [
+          { row: 1, link: 3 }, // Reports controller
+          { row: 1, link: 4 }, // Reports router
+          { row: 2, link: 7 }, // Billing composables
+          { row: 3, link: 1 }, // Onboarding schema
+          { row: 0, link: 12 } // Auth api specs
+        ];
+
+        // Cells that should appear "stale" after 5 Builder turns (cells the Builder did not propagate to but should have)
+        const staleAfterBuilder = [
+          { r: 1, c: 1 }, { r: 1, c: 2 }, { r: 1, c: 9 }, { r: 1, c: 12 }, { r: 1, c: 13 },
+          { r: 2, c: 3 }, { r: 2, c: 9 }, { r: 2, c: 12 },
+          { r: 3, c: 3 }, { r: 3, c: 9 }, { r: 3, c: 12 },
+          { r: 0, c: 1 }, { r: 0, c: 3 }, { r: 0, c: 9 }
+        ];
+
+        const placeAgentOverCell = (agent, r, c) => {
+          const cell = this.cellAt(r, c);
+          if (!cell) return null;
+          const cellRect = cell.getBoundingClientRect();
+          const boardRect = board.getBoundingClientRect();
+          return {
+            x: cellRect.left - boardRect.left + (cellRect.width / 2) - (agent.offsetWidth / 2),
+            y: cellRect.top - boardRect.top + (cellRect.height / 2) - (agent.offsetHeight / 2) - 14
+          };
+        };
+
+        const tl = gsap.timeline({ repeat: -1, repeatDelay: 1.8, defaults: { ease: 'power2.out' } });
+
+        // Reset
+        tl.set(allCells, { backgroundColor: '#d8d6cf', scale: 1 })
+          .set(builder, { opacity: 0 })
+          .set(antidrift, { opacity: 0 })
+          .set(beam, { opacity: 0, x: 0 })
+          .call(() => { this.cycle = 0; this.tickets = []; this.phase = 'builder'; });
+
+        // Builder turns
+        builderTurns.forEach((turn, turnIdx) => {
+          const pos = placeAgentOverCell(builder, turn.row, turn.link);
+          if (!pos) return;
+
+          tl.call(() => { this.cycle = turnIdx + 1; this.phase = 'builder'; });
+          tl.to(builder, { opacity: 1, x: pos.x, y: pos.y, duration: 0.45 }, '+=0.1');
+
+          // Touch the cell
+          const targetCell = this.cellAt(turn.row, turn.link);
+          tl.to(targetCell, { backgroundColor: '#ff5a24', scale: 1.25, duration: 0.3 }, '+=0.1');
+
+          // One-hop propagation (left and right within the same row, if exists)
+          const left = this.cellAt(turn.row, turn.link - 1);
+          const right = this.cellAt(turn.row, turn.link + 1);
+          const hops = [left, right].filter(Boolean);
+          if (hops.length) {
+            tl.to(hops, { backgroundColor: '#d49a3a', duration: 0.3 }, '+=0.1');
+          }
+
+          // Settle touched cell to a "recently edited" tone
+          tl.to(targetCell, { scale: 1, duration: 0.2 }, '+=0.1');
+        });
+
+        // Builder leaves
+        tl.to(builder, { opacity: 0, duration: 0.3 }, '+=0.4');
+
+        // Phase shift to Anti-Drift sweep
+        tl.call(() => { this.phase = 'sweep'; });
+
+        // Show stale cells light up red (drift detected)
+        const staleCells = staleAfterBuilder.map(s => this.cellAt(s.r, s.c)).filter(Boolean);
+        tl.to(staleCells, {
+          backgroundColor: '#d04a2a',
+          scale: 1.1,
+          duration: 0.35,
+          stagger: { each: 0.04, from: 'start' }
+        }, '+=0.2');
+        tl.to(staleCells, { scale: 1, duration: 0.25 }, '+=0.05');
+
+        // Anti-Drift agent appears, beam sweeps from left to right across the board
+        const boardRect = board.getBoundingClientRect();
+        tl.set(beam, { x: 0 }, '<');
+        tl.to(beam, { opacity: 1, duration: 0.25 }, '<');
+        tl.fromTo(beam,
+          { x: 0 },
+          { x: board.offsetWidth - 28, duration: 1.6, ease: 'power1.inOut' },
+          '<+=0.1'
+        );
+
+        // Anti-Drift agent label appears in the corner
+        tl.to(antidrift, { opacity: 1, duration: 0.3 }, '<');
+
+        // Tickets spawn from stale cells (we use a deterministic subset for the tray)
+        const ticketTexts = [
+          { file: 'reports/openapi.yaml', detail: 'route /reports missing in spec' },
+          { file: 'reports/migrations/0042.sql', detail: 'summary column not nullable' },
+          { file: 'billing/training.md', detail: 'invoice fields out of date' },
+          { file: 'onboarding/schema.sql', detail: 'role enum diverged' },
+          { file: 'auth/CDN-config.tf', detail: 'token domain not whitelisted' }
+        ];
+        ticketTexts.forEach((t, i) => {
+          tl.call(() => { this.tickets.push(t); }, null, `+=${i === 0 ? 0.3 : 0.15}`);
+        });
+
+        // Fade beam, leave board in "drift visible" state for a beat
+        tl.to(beam, { opacity: 0, duration: 0.4 }, '+=0.6');
+        tl.call(() => { this.phase = 'tickets accumulating'; });
+
+        // Hold so user can read tickets
+        tl.to({}, { duration: 2.5 });
+
+        // Anti-Drift agent withdraws
+        tl.to(antidrift, { opacity: 0, duration: 0.4 });
+
+        this.tl = tl;
+      }
+    },
+    template: `
+      <div class="sim-stage">
+        <div class="grid grid-cols-1 lg:grid-cols-[1fr_180px] gap-4 lg:gap-6">
+          <div class="relative">
+            <div class="sim-board" style="position: relative;">
+              <div></div>
+              <div v-for="(link, i) in chain" :key="'h'+link.id" class="text-[0.45rem] sm:text-[0.55rem] uppercase tracking-wider text-[#7a7a7a] text-center" style="line-height:1; padding-bottom:4px; word-break:break-word;">{{ String(i+1).padStart(2,'0') }}</div>
+              <template v-for="(feat, r) in features" :key="feat.id">
+                <div class="sim-feature-label">{{ feat.label }}</div>
+                <div v-for="(link, c) in chain" :key="feat.id+'-'+link.id" class="sim-cell tile" :data-r="r" :data-c="c"></div>
+              </template>
+              <div class="sim-scan-beam"></div>
+              <div class="sim-agent sim-agent-builder" style="width:48px; height:28px; font-size:0.6rem;">builder</div>
+              <div class="sim-agent sim-agent-antidrift" style="width:64px; height:28px; font-size:0.55rem; right:0; left:auto; top:-30px;">anti-drift</div>
+            </div>
+            <div class="mt-4 flex items-center gap-2 flex-wrap">
+              <span class="text-[0.6rem] uppercase tracking-wider text-[#7a7a7a]">Builder turn</span>
+              <span v-for="n in cycleMax" :key="n" :class="['sim-cycle-dot', n <= cycle ? 'active' : '', (phase === 'sweep' || phase === 'tickets accumulating') && n === cycleMax ? 'sweep' : '']"></span>
+              <span class="text-[0.6rem] uppercase tracking-wider text-[#7a7a7a] ml-3">phase</span>
+              <span class="text-xs font-mono text-[#252525]">{{ phase }}</span>
+            </div>
+          </div>
+          <aside class="border border-black/10 rounded-lg bg-white/60 p-3">
+            <div class="text-[0.6rem] uppercase tracking-wider text-[#7a7a7a] mb-2">Tickets · .tickets/open/</div>
+            <div class="sim-ticket-tray">
+              <transition-group name="ticket" tag="div" class="space-y-1.5">
+                <div v-for="(t, i) in tickets" :key="i+t.file" class="sim-ticket">
+                  <div class="text-[#111111] truncate">{{ t.file }}</div>
+                  <div class="text-[#7a7a7a] truncate">{{ t.detail }}</div>
+                </div>
+              </transition-group>
+              <div v-if="!tickets.length" class="text-[0.65rem] text-[#7a7a7a] italic">empty</div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    `
+  };
+
+  // ============ MAIN APP ============
+  createApp({
+    data() {
+      return {
+        tab: 'overview',
+        selectedApproachId: null,
+        data: null,
+        loadError: null,
+        tabs: [
+          { id: 'overview', label: 'Overview' },
+          { id: 'approaches', label: 'Approaches' },
+          { id: 'topology', label: 'Topology' },
+          { id: 'compare', label: 'Compare' },
+          { id: 'pairings', label: 'Pairings' },
+          { id: 'questions', label: 'Open questions' }
+        ]
+      };
+    },
+    async mounted() {
+      try {
+        const res = await fetch('./approaches.json');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        this.data = await res.json();
+        this.selectedApproachId = this.data.approaches[0]?.id || null;
+      } catch (err) {
+        this.loadError = err.message;
+        // Inline fallback so the page degrades when opened via file:// without a server
+        const inline = document.getElementById('approaches-data');
+        if (inline) {
+          try {
+            this.data = JSON.parse(inline.textContent);
+            this.selectedApproachId = this.data.approaches[0]?.id || null;
+          } catch (_) { /* show error below */ }
+        }
+      }
+    },
+    computed: {
+      selectedApproach() {
+        if (!this.data) return null;
+        return this.data.approaches.find(a => a.id === this.selectedApproachId);
+      },
+      selectedIndexLabel() {
+        if (!this.data || !this.selectedApproach) return '';
+        const i = this.data.approaches.findIndex(a => a.id === this.selectedApproachId);
+        return String(i + 1).padStart(2, '0');
+      }
+    },
+    methods: {
+      goToApproach(id) {
+        this.tab = 'approaches';
+        this.selectedApproachId = id;
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      },
+      approachById(id) {
+        return this.data?.approaches.find(a => a.id === id) || { name: id, tagline: '', role: '' };
+      },
+      roleClasses(role) {
+        if (role === 'detector') return 'bg-[#1b1c1b] text-white border-black/40';
+        if (role === 'surface') return 'bg-[#ff5a24] text-white border-[#ff5a24]';
+        return 'bg-white/70 text-[#2c2c2c] border-black/15';
+      },
+      visualTitle(type) {
+        const m = {
+          'chain-column-tiles': 'Chain column tiles',
+          'tile-heatmap': 'Edit fingerprint heatmap',
+          'eval-status-matrix': 'Eval status matrix',
+          'commit-timeline-tiles': 'Commit timeline',
+          'per-file-tree-card': 'Per-file tree card',
+          'per-link-health-pills': 'Per-link health pills'
+        };
+        return m[type] || type;
+      },
+      visualComponent(type) {
+        return {
+          'chain-column-tiles': ChainColumnTiles,
+          'tile-heatmap': TileHeatmap,
+          'eval-status-matrix': EvalStatusMatrix,
+          'commit-timeline-tiles': CommitTimelineTiles,
+          'per-file-tree-card': PerFileTreeCard,
+          'per-link-health-pills': PerLinkHealthPills
+        }[type] || { render: () => h('div', { class: 'text-sm text-[#7a7a7a]' }, `Unknown visual type: ${type}`) };
+      },
+      ticketStateClasses(state) {
+        switch (state) {
+          case 'open': return 'border-[#ff5a24]/40 bg-[#ff5a24]/8';
+          case 'acknowledged': return 'border-[#d49a3a]/45 bg-[#d49a3a]/10';
+          case 'resolved': return 'border-[#7d8a3b]/40 bg-[#9aa847]/10';
+          case 'archived': return 'border-black/10 bg-[#fafaf7]';
+          default: return 'border-black/10 bg-white/85';
+        }
+      },
+      ticketStateLabelClass(state) {
+        switch (state) {
+          case 'open': return 'text-[#ff5a24]';
+          case 'acknowledged': return 'text-[#a17013]';
+          case 'resolved': return 'text-[#5f6a26]';
+          case 'archived': return 'text-[#7a7a7a]';
+          default: return 'text-[#7a7a7a]';
+        }
+      },
+      ticketDotColor(state) {
+        switch (state) {
+          case 'open': return '#ff5a24';
+          case 'acknowledged': return '#d49a3a';
+          case 'resolved': return '#9aa847';
+          case 'archived': return '#bfbcb4';
+          default: return '#bfbcb4';
+        }
+      },
+      ticketCountFor(state) {
+        return { open: 3, acknowledged: 2, resolved: 2, archived: 1 }[state] || 1;
+      },
+      exampleTicketName(state, n) {
+        const samples = {
+          open: ['anti-drift-walker-7a3f9c.md', 'docs-readme-stale-91b2e4.md', 'security-secret-leak-44dc01.md'],
+          acknowledged: ['style-banned-word-2c8e10.md', 'coverage-untested-route-b78a55.md'],
+          resolved: ['anti-drift-eval-route-openapi-3f2a99.md', 'perf-bundle-budget-d11c08.md'],
+          archived: ['anti-drift-walker-2026-04-c901.md']
+        };
+        return (samples[state] || [])[n - 1] || `${state}-ticket-${n}.md`;
+      },
+      dutyOwnerClass(owner) {
+        if (owner.includes('Builder')) return 'bg-white/70 text-[#2c2c2c] border-black/15';
+        if (owner.includes('Anti-Drift')) return 'bg-[#1b1c1b] text-white border-black/40';
+        if (owner.includes('.tickets')) return 'bg-[#ff5a24] text-white border-[#ff5a24]';
+        return 'bg-white/40 text-[#2c2c2c] border-black/15';
+      }
+    },
+    components: {
+      ChainColumnTiles, TileHeatmap, EvalStatusMatrix, CommitTimelineTiles, PerFileTreeCard, PerLinkHealthPills,
+      'chain-break-sim': ChainBreakSim,
+      'walker-sim': WalkerSim,
+      'anti-drift-board': AntiDriftBoard
+    }
+  }).mount('#app');
+</script>
+</body>
+</html>

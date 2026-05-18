@@ -1,0 +1,637 @@
+{
+  "meta": {
+    "title": "Drift Detection Approaches",
+    "subtitle": "Seven designs for keeping the development chain in sync",
+    "audience": "rsi-harness team review",
+    "stack": ["Node.js", "Vue.js", "Postgres optional"],
+    "problem_statement": {
+      "title": "Where drift starts and how it spreads",
+      "cards": [
+        {
+          "kind": "intro",
+          "label": "01 · Practice",
+          "title": "I pause every three to five turns",
+          "body": "Part of working effectively with AI every day is pausing on a cadence to push the Claude Code agent to check for drift across the README, the OpenAPI spec, the routes, the testing coverage, and the evals. A four-team scan also runs on demand (red, green, blue, yellow, catalogued in CHECKS.md)."
+        },
+        {
+          "kind": "stat",
+          "label": "02 · The gap",
+          "title": "Functional is not the same as well structured",
+          "stats": [
+            { "value": "97-99%", "label": "functionally correct" },
+            { "value": "≈90%", "label": "well structured" },
+            { "value": "7-10%", "label": "compounding rework" }
+          ],
+          "footer": "Most of the gap shows up as drift along the chain of related artefacts."
+        },
+        {
+          "kind": "chain",
+          "label": "03 · The chain",
+          "title": "Fourteen links from requirements to training",
+          "body": "When the model edits one link, it usually touches the one or two direct neighbours, then stops. Later, when work resumes elsewhere, the model reads the now-stale neighbours as ground truth and rebuilds against them. The chain breaks further. Drop a field from the database, and the same field has to move through the UI, the DDL, the training docs, and the change-management notes. Most of the time it does not."
+        },
+        {
+          "kind": "proposal",
+          "label": "04 · The proposal",
+          "title": "Seven approaches plus an observer pattern",
+          "body": "Claude skills, hooks, and harness configurations that catch drift in the loop, not as a post-hoc audit. Around the seven, an external observer pattern: the Builder agent stays focused on application code while one or more Anti-Drift harnesses run as separate Claude Code sessions outside the project. They watch the filesystem (via an external script, not the FileChanged hook), run their checks, and drop tickets into the project's .tickets/ folder.",
+          "chips": ["chain walker", "fingerprint heatmap", "symbiotic evals", "commit narrative", "per-file manifest", "stop-hook sweep", "tile board"]
+        },
+        {
+          "kind": "feature",
+          "label": "05 · Anti-Drift role",
+          "title": "Air traffic control, not a builder",
+          "body": "The Anti-Drift agent does not touch application code. It watches the Builder across the chain, reads the deterministic eval evidence, validates against the code, and decides whether to file a ticket. Drift spreads horizontally along one feature chain and vertically across feature chains. The agent catches both. It runs at a slower cadence than the Builder, on the order of every five turns. Faster than that and the stream of tickets stalls forward momentum."
+        }
+      ]
+    },
+    "chain": [
+      { "id": "requirements", "label": "Requirements" },
+      { "id": "schema", "label": "DB Schema" },
+      { "id": "migrations", "label": "Migrations" },
+      { "id": "controllers", "label": "Controllers" },
+      { "id": "routers", "label": "Routers" },
+      { "id": "middleware", "label": "Middleware" },
+      { "id": "composables", "label": "Composables" },
+      { "id": "components", "label": "Components" },
+      { "id": "pages", "label": "Pages" },
+      { "id": "docs", "label": "Documentation" },
+      { "id": "terraform", "label": "Infra / Terraform" },
+      { "id": "externals", "label": "External (CDN/DNS)" },
+      { "id": "api_specs", "label": "API Specs" },
+      { "id": "training", "label": "Training / Change Mgmt" }
+    ],
+    "hook_events_in_play": [
+      "PostToolUse",
+      "PostToolBatch",
+      "Stop",
+      "SubagentStop",
+      "SessionStart",
+      "UserPromptSubmit",
+      "PreCompact"
+    ],
+    "monitoring_note": "FileChanged is intentionally not used. Real-time filesystem monitoring runs in the Anti-Drift harness as an external Node script (chokidar), separate from Claude Code's hook system. The script queues filesystem events and runs the deterministic evals continuously. The Anti-Drift agent reads the queued evidence on its own slower cadence and makes the executive decision on whether a ticket is warranted. Firing on every file change would flood the Builder.",
+    "design_principles": [
+      "Detection runs deterministically where possible, and a Claude-SDK pass only where judgement is required.",
+      "Every approach maps to specific Claude Code hook events and skill files. Nothing is hypothetical infrastructure.",
+      "Visualizations are tile-based or grid-based. No force-directed graphs.",
+      "Memory lives in the repo as JSON sidecars or in Postgres if scale demands it. No bespoke services."
+    ]
+  },
+  "approaches": [
+    {
+      "id": "chain-walker",
+      "name": "Chain Walker",
+      "tagline": "Bidirectional walker that traces a touched file up and down the chain and writes bridge artifacts at each hop.",
+      "role": "detector",
+      "summary": "On every Edit or Write, a forked sub-agent walks the canonical chain from the touched file outward. It identifies the upstream and downstream files at each chain step, computes a bridge artifact (the set of names, types, fields, and contracts that should match between the two ends), and writes a diff when the bridge fails. The walker stops at a configurable depth and produces a single drift report keyed by the touched file's session ID.",
+      "covers": ["all"],
+      "triggers": {
+        "primary_hook": "PostToolUse",
+        "matcher": "Edit|Write",
+        "secondary_hooks": ["Stop", "manual /walk"],
+        "fs_triggers": [],
+        "rationale": "PostToolUse fires immediately after each write. Stop runs an end-of-turn full sweep across all files touched in the turn."
+      },
+      "memory_model": {
+        "type": "JSON sidecars",
+        "location": ".ai/walker/<session_id>/",
+        "files": [
+          "touched.jsonl (one row per Edit/Write, append-only)",
+          "bridges/<chain-step>/<src>__to__<dst>.json (computed crosswalk)",
+          "drift.jsonl (one row per detected breakage)"
+        ],
+        "lifecycle": "Regenerated per touched file; bridges are cached and only recomputed when either endpoint changes."
+      },
+      "architecture": {
+        "components": [
+          { "name": "PostToolUse hook", "role": "Logs the touched file path and invokes the walker skill in fork context." },
+          { "name": "Walker skill (.claude/skills/walk/)", "role": "Defines the chain, the per-step bridge rules, and walks the graph." },
+          { "name": "Bridge rule library", "role": "Per-transition rules (schema↔migration, controller↔router, route↔openapi, etc.)." },
+          { "name": "Drift report writer", "role": "Persists JSONL drift records under .ai/walker/." },
+          { "name": "Stop hook", "role": "Runs the walker once more across the union of files touched in the turn." }
+        ],
+        "flow": "Edit triggers PostToolUse → hook starts forked walker sub-agent → walker reads bridge rules → walker checks upstream and downstream at each hop → drift rows appended → Stop hook aggregates and may block the turn."
+      },
+      "skill_files": [
+        { "path": ".claude/skills/walk/SKILL.md", "purpose": "Walker entrypoint. context: fork, agent: Explore." },
+        { "path": ".claude/skills/walk/bridges/", "purpose": "One markdown file per chain transition with the bridge rules." },
+        { "path": ".claude/skills/walk/scripts/walk.mjs", "purpose": "Node script that runs the walk deterministically when invoked outside an LLM context." },
+        { "path": ".claude/hooks/post-edit-walk.mjs", "purpose": "PostToolUse hook script that invokes /walk with the touched file." },
+        { "path": ".claude/agents/walker.md", "purpose": "Custom sub-agent definition with read-only tools." }
+      ],
+      "pros": [
+        "Reaches every link of the chain rather than one hop out.",
+        "Bridge artifacts are diffable, so reviewers can see exactly what fell out of sync.",
+        "Deterministic when rules are present; falls back to LLM judgement only when a bridge is undefined.",
+        "Walker output is itself a useful context payload for the next Claude turn."
+      ],
+      "cons": [
+        "Token cost adds up: a forked sub-agent on every edit is not free.",
+        "Bridge rules need to be authored per transition before the walker is useful.",
+        "Deep walks can flag changes that are intended but not yet propagated, producing noise mid-task.",
+        "Cycle detection and rate limiting are required for monorepos with circular imports."
+      ],
+      "complexity": "M",
+      "runtime_cost": "per-edit",
+      "memory_footprint": "small-to-medium (sidecar JSON proportional to touched files)",
+      "sample_visual": {
+        "type": "chain-column-tiles",
+        "description": "Fourteen vertical columns, one per chain link. Each column is a stack of small tiles, one per file in that link. Cell color encodes sync status: olive = synced, amber = drift suspected, red = bridge failed, grey = not on chain. A pulse on the touched cell marks the trigger.",
+        "axes": { "x": "chain step", "y": "files within the step" },
+        "encoding": "color = sync status, size = uniform, position = deterministic by file name"
+      }
+    },
+    {
+      "id": "edit-fingerprint-heatmap",
+      "name": "Edit Fingerprint Heatmap",
+      "tagline": "Tile grid that logs every file Claude touches and the cadence of touches.",
+      "role": "surface",
+      "summary": "A purely observational layer. Every PostToolUse for Edit or Write appends a row to a session-scoped JSONL log. A skill renders the log as a tile heatmap where each cell is a file, brightness is touch count, and a small chip marks the most recent edit. The heatmap itself does not detect drift; it provides the LLM and the human with a fingerprint of where work happened so other approaches can radiate out from the hotspots.",
+      "covers": ["observation only"],
+      "triggers": {
+        "primary_hook": "PostToolUse",
+        "matcher": "Edit|Write",
+        "secondary_hooks": ["UserPromptSubmit (renders current fingerprint as additional context)", "Stop (snapshots fingerprint)"],
+        "fs_triggers": [],
+        "rationale": "Pure logging on every write. The render step is on-demand."
+      },
+      "memory_model": {
+        "type": "JSONL log plus rendered HTML snapshot",
+        "location": ".ai/fingerprint/<session_id>/",
+        "files": [
+          "touches.jsonl (timestamp, file_path, tool, line_count_delta)",
+          "snapshot.html (regenerated on /fingerprint)"
+        ],
+        "lifecycle": "Append-only during the session. Snapshot regenerates on demand."
+      },
+      "architecture": {
+        "components": [
+          { "name": "PostToolUse hook", "role": "Appends a touch row." },
+          { "name": "Render skill (.claude/skills/fingerprint/)", "role": "Generates the tile heatmap as a single-file HTML page." },
+          { "name": "UserPromptSubmit hook", "role": "Optionally injects a textual summary of the current fingerprint into the next prompt." }
+        ],
+        "flow": "Edit fires PostToolUse → touches.jsonl appended → user types /fingerprint → skill reads the log and writes snapshot.html → browser opens."
+      },
+      "skill_files": [
+        { "path": ".claude/skills/fingerprint/SKILL.md", "purpose": "Render the heatmap." },
+        { "path": ".claude/skills/fingerprint/scripts/render.mjs", "purpose": "Node script that builds the HTML snapshot." },
+        { "path": ".claude/hooks/log-touch.mjs", "purpose": "PostToolUse hook script." }
+      ],
+      "pros": [
+        "Cheap. Pure logging plus a render step.",
+        "Output is human-readable and LLM-readable; it pairs with any detector approach.",
+        "Works without any chain rules, so it ships on day one.",
+        "Snapshot doubles as session documentation for retrospectives."
+      ],
+      "cons": [
+        "Does not itself detect drift; needs a detector approach on top.",
+        "Long sessions produce a noisy heatmap; needs a recency-decay rendering option.",
+        "Snapshots are session-scoped, so cross-session views need an aggregator."
+      ],
+      "complexity": "S",
+      "runtime_cost": "per-edit logging, per-render rendering",
+      "memory_footprint": "tiny (JSONL)",
+      "sample_visual": {
+        "type": "tile-heatmap",
+        "description": "A grid of fixed-size tiles laid out by directory. Tiles are grouped by top-level folder, then sorted by file name. Brightness encodes touch count in the current session. A small orange pulse marks the most recently edited file. A sidebar lists the top five touched files with counts.",
+        "axes": { "x": "files within a directory bucket", "y": "directory buckets" },
+        "encoding": "brightness = touch count, pulse = recent edit, hue = folder family"
+      }
+    },
+    {
+      "id": "symbiotic-chain-evals",
+      "name": "Symbiotic Chain Evals",
+      "tagline": "Per-project drift evals that live next to the code and grow as the project grows.",
+      "role": "detector",
+      "summary": "A scaffolded set of deterministic JavaScript evals, one per chain transition the project actually uses. Each eval is a pure function that reads both ends of a transition (schema and migration, route and OpenAPI document, endpoint and README) and returns a structured diff. Evals are added as the project develops the relevant link. A PostToolUse hook selects only the evals whose input files were touched and runs them. The eval scaffolding ships in the harness; the rules are project-specific.",
+      "covers": ["per-transition, scoped to links the project uses"],
+      "triggers": {
+        "primary_hook": "PostToolUse",
+        "matcher": "Edit|Write",
+        "secondary_hooks": ["Stop (full sweep)", "external chokidar script (catches edits outside Claude)"],
+        "fs_triggers": [".sql, .yaml, .yml, .go, .ts, .vue, .md, .tf"],
+        "rationale": "Run only the evals whose source files match the touched file's link. The external script handles edits made outside a Claude session; FileChanged would couple this to Claude's runtime, which is the wrong boundary."
+      },
+      "memory_model": {
+        "type": "Evals on disk plus JSON results",
+        "location": ".evals/ (eval source), .ai/eval-results/ (results)",
+        "files": [
+          ".evals/<link-pair>/eval.mjs (pure function)",
+          ".evals/<link-pair>/fixtures/ (cached endpoint or schema snapshots)",
+          ".ai/eval-results/<session_id>/<eval>.json"
+        ],
+        "lifecycle": "Evals are versioned with the code. Results are session-scoped and regenerated."
+      },
+      "architecture": {
+        "components": [
+          { "name": "Eval dispatcher", "role": "Maps a touched file path to the set of evals whose inputs include that path." },
+          { "name": "PostToolUse hook", "role": "Calls the dispatcher and runs the matched evals." },
+          { "name": "Eval generator skill", "role": "Bootstrap skill that scans a new project and proposes initial evals to author." },
+          { "name": "Results aggregator", "role": "Stop-time roll-up of per-eval results into a single drift report." }
+        ],
+        "flow": "Edit → PostToolUse → dispatcher → matched evals run → results written → optional block on failure."
+      },
+      "skill_files": [
+        { "path": ".claude/skills/eval-author/SKILL.md", "purpose": "Helps the user author a new chain-transition eval from a worked example." },
+        { "path": ".claude/skills/eval-run/SKILL.md", "purpose": "Runs the eval set on demand and prints a summary." },
+        { "path": ".claude/hooks/post-edit-eval.mjs", "purpose": "PostToolUse dispatcher." },
+        { "path": ".evals/_template/eval.mjs", "purpose": "Starter eval the author skill copies from." }
+      ],
+      "pros": [
+        "Deterministic and fast. Same input, same output.",
+        "Catches the exact drift patterns the project cares about, not generic ones.",
+        "Each eval is small and reviewable in isolation.",
+        "Output is structured JSON, so it composes with the walker and the tile board."
+      ],
+      "cons": [
+        "Coverage depends on the team writing the evals; new chain patterns are not caught until an eval exists.",
+        "Evals decay as the code shape changes; a maintenance discipline is required.",
+        "Authoring evals up front feels like overhead for early-stage projects."
+      ],
+      "complexity": "M",
+      "runtime_cost": "per-edit, fast",
+      "memory_footprint": "tiny per eval result",
+      "sample_visual": {
+        "type": "eval-status-matrix",
+        "description": "A matrix where rows are chain transitions (schema↔migration, route↔openapi, etc.) and columns are recent runs. Cell color: olive = pass, amber = warn, red = fail, grey = no eval. Hovering a cell expands the diff inline. A row indicator shows how recently the eval ran.",
+        "axes": { "x": "run timeline (latest five runs)", "y": "chain transition" },
+        "encoding": "color = pass/fail, indicator dot = recency"
+      }
+    },
+    {
+      "id": "commit-narrative-spine",
+      "name": "Commit-Narrative Spine",
+      "tagline": "Treat git commits as the authoritative narrative of what changed and which links were propagated.",
+      "role": "detector and record",
+      "summary": "Each commit message follows a structured template: a list of chain links touched, a per-link note on what was changed, and a propagation checklist of links that should have been verified. A PreToolUse hook on Bash intercepts git commit and validates the message against the template. A Stop hook drafts the message from the session's PostToolUse log. The discipline is enforced at the commit boundary, so the record is reliable even if individual edits are not propagated immediately.",
+      "covers": ["all, via discipline at commit time"],
+      "triggers": {
+        "primary_hook": "PreToolUse",
+        "matcher": "Bash",
+        "if_clause": "Bash(git commit *)",
+        "secondary_hooks": ["Stop (drafts the message)", "PostToolUse (tracks the touched links during the turn)"],
+        "fs_triggers": [],
+        "rationale": "The commit boundary is the place where chain coverage is verifiable and where a record is left for the next session."
+      },
+      "memory_model": {
+        "type": "Git history plus a session log",
+        "location": "git log; .ai/commit-draft/<session_id>.md",
+        "files": [
+          ".ai/commit-draft/<session_id>.md (Stop-time draft of the commit message)",
+          ".commit-template.md (the project template enforced by the hook)"
+        ],
+        "lifecycle": "Draft regenerates each turn. Final message lives in git."
+      },
+      "architecture": {
+        "components": [
+          { "name": "PostToolUse log writer", "role": "Logs which chain links a touched file maps to." },
+          { "name": "Stop hook drafter", "role": "Reads the log and writes a commit-template-compliant draft." },
+          { "name": "PreToolUse Bash interceptor", "role": "Validates the message against the template and blocks commit if links are missing." },
+          { "name": "Commit-narrative skill", "role": "Helps the user finalize the message and add propagation notes." }
+        ],
+        "flow": "Edits → log → Stop → draft → user runs git commit → PreToolUse validates → commit proceeds or blocks with reason."
+      },
+      "skill_files": [
+        { "path": ".claude/skills/commit-narrative/SKILL.md", "purpose": "Finalize the commit message." },
+        { "path": ".claude/hooks/pre-commit-validate.mjs", "purpose": "PreToolUse Bash interceptor." },
+        { "path": ".claude/hooks/stop-draft-commit.mjs", "purpose": "Stop hook drafter." },
+        { "path": ".commit-template.md", "purpose": "Project-level template enforced by the hook." }
+      ],
+      "pros": [
+        "Reuses a record everyone already keeps. No new persistence surface.",
+        "Cheap to run. The hook is a regex check on the commit message body.",
+        "The commit log becomes a searchable narrative of which links were touched and verified.",
+        "Pairs well with detectors; the commit message can carry walker or eval results inline."
+      ],
+      "cons": [
+        "Captures intent at commit time, not actual propagation correctness.",
+        "Depends on the team accepting commit-message discipline.",
+        "Does not help mid-task; drift accumulates inside a turn until commit.",
+        "Squash merges and rebases can erase the per-commit detail."
+      ],
+      "complexity": "S",
+      "runtime_cost": "per-commit",
+      "memory_footprint": "tiny",
+      "sample_visual": {
+        "type": "commit-timeline-tiles",
+        "description": "Vertical column of commit tiles. Each tile shows the commit subject, the list of chain links named in the message, and a row of fourteen small chain-link indicators (one per link). Olive indicator means the link was named; grey means not named. A side panel shows the cumulative coverage of links across the last twenty commits.",
+        "axes": { "x": "fourteen chain links", "y": "commits (most recent at top)" },
+        "encoding": "indicator color = named in commit, side panel = cumulative coverage"
+      }
+    },
+    {
+      "id": "per-file-dependency-manifest",
+      "name": "Per-File Dependency Manifest",
+      "tagline": "Each file carries a manifest of its upstream and downstream links, regenerated on every edit.",
+      "role": "detector and surface",
+      "summary": "For each tracked file, a sidecar manifest describes its upstream sources (what flows into it) and downstream consumers (what reads from it). The manifest is regenerated on PostToolUse. After the manifest changes, a sub-agent runs a per-file health check that compares the manifest against the current file content and writes a status. A render skill draws a per-file tree card showing the file in the middle with its upstream stack above and its downstream stack below.",
+      "covers": ["file-level relationships across the chain"],
+      "triggers": {
+        "primary_hook": "PostToolUse",
+        "matcher": "Edit|Write",
+        "secondary_hooks": ["external chokidar script (manifest regeneration outside Claude edits)", "Stop (chain health roll-up)"],
+        "fs_triggers": ["any tracked source file"],
+        "rationale": "Manifest staleness is the failure mode; regenerating on every edit keeps it accurate. External edits are picked up by the harness's own chokidar watcher, not by a Claude Code hook."
+      },
+      "memory_model": {
+        "type": "Sidecar JSON per file or a single manifest file",
+        "location": ".ai/deps/ (one JSON per tracked file) or .ai/deps.json (consolidated)",
+        "files": [
+          ".ai/deps/<hashed-path>.json (per-file manifest)",
+          ".ai/deps-index.json (path → hash lookup)",
+          ".ai/deps-health/<session_id>.json (per-turn health roll-up)"
+        ],
+        "lifecycle": "Regenerated per touched file. Consolidated index rebuilt on Stop."
+      },
+      "architecture": {
+        "components": [
+          { "name": "Manifest generator skill", "role": "Reads a touched file, extracts its imports, schema references, and named contracts, and writes the sidecar." },
+          { "name": "PostToolUse hook", "role": "Triggers regeneration for the touched file." },
+          { "name": "Health check sub-agent", "role": "Compares the manifest against the file contents and flags inconsistencies." },
+          { "name": "Tree card renderer", "role": "Builds the per-file visual." }
+        ],
+        "flow": "Edit → PostToolUse → manifest regenerated → health check → tree card available for the user or LLM."
+      },
+      "skill_files": [
+        { "path": ".claude/skills/deps/SKILL.md", "purpose": "Regenerate the manifest for a file." },
+        { "path": ".claude/skills/deps/scripts/extract.mjs", "purpose": "Deterministic extractor: imports, route declarations, schema refs, openapi paths." },
+        { "path": ".claude/agents/deps-health.md", "purpose": "Sub-agent that runs the health check." },
+        { "path": ".claude/hooks/post-edit-deps.mjs", "purpose": "PostToolUse hook." }
+      ],
+      "pros": [
+        "Structured data. Every relationship is a JSON record, easy to diff and query.",
+        "Per-file tree cards match the user's tile preference and remain readable as the project grows.",
+        "Composes naturally with the walker (which reads the manifests rather than parsing files itself).",
+        "Externally-modified files are caught via FileChanged."
+      ],
+      "cons": [
+        "Manifests can drift from reality if the extractor misses a relationship type.",
+        "Per-file JSON across a large repo adds up; a consolidated manifest may be needed.",
+        "Initial population of manifests across a large existing codebase is slow.",
+        "Renaming files requires manifest rewrites; needs a rename-aware migration step."
+      ],
+      "complexity": "M-L",
+      "runtime_cost": "per-edit",
+      "memory_footprint": "moderate (one JSON per tracked file)",
+      "sample_visual": {
+        "type": "per-file-tree-card",
+        "description": "A horizontal card centered on the file in focus. Upstream sources appear as a fixed column of tiles above, ordered by chain link. Downstream consumers appear as a fixed column of tiles below. Each tile is colored by health: olive = consistent, amber = stale, red = broken. The card is generated for whichever file is touched.",
+        "axes": { "x": "single file (the subject)", "y": "chain depth above and below" },
+        "encoding": "tile color = health, column position = chain link"
+      }
+    },
+    {
+      "id": "stop-hook-drift-sweep",
+      "name": "Stop-Hook Drift Sweep",
+      "tagline": "End-of-turn checklist that runs deterministically before the user resumes.",
+      "role": "detector",
+      "summary": "On every Stop event, a forked sub-agent runs the user's manual checklist: README references match endpoints, openapi.yaml lines up with route declarations, DDL fields appear in migration files, training docs reference current screens. The result is a single per-turn drift report. If the report contains failures above a threshold, the hook returns decision: block with a reason, forcing Claude to address the drift before the user types again.",
+      "covers": ["the user's current manual checks, run automatically"],
+      "triggers": {
+        "primary_hook": "Stop",
+        "matcher": null,
+        "secondary_hooks": ["SubagentStop (per sub-agent aggregation)", "PostCompact (re-runs on context reset)"],
+        "fs_triggers": [],
+        "rationale": "Stop runs once per turn at the user's cadence. It is the natural place for the user's existing checklist."
+      },
+      "memory_model": {
+        "type": "Per-turn report",
+        "location": ".ai/drift/<session_id>/<turn>.md",
+        "files": [
+          ".ai/drift/<session_id>/<turn>.md (per-turn report)",
+          ".ai/drift/<session_id>/baseline.json (start-of-session baseline)"
+        ],
+        "lifecycle": "Baseline captured at SessionStart. Per-turn reports accumulate."
+      },
+      "architecture": {
+        "components": [
+          { "name": "Stop hook", "role": "Invokes the sweep sub-agent with the turn's touched files as input." },
+          { "name": "Sweep sub-agent", "role": "Runs the deterministic checks plus an LLM judgement pass on ambiguous cases." },
+          { "name": "Decision returner", "role": "Returns decision: block with reason if drift exceeds threshold." }
+        ],
+        "flow": "Turn ends → Stop fires → sweep runs → report written → optional block."
+      },
+      "skill_files": [
+        { "path": ".claude/skills/drift-sweep/SKILL.md", "purpose": "The checklist content." },
+        { "path": ".claude/agents/sweeper.md", "purpose": "Sub-agent definition." },
+        { "path": ".claude/hooks/stop-drift-sweep.mjs", "purpose": "Stop hook script." }
+      ],
+      "pros": [
+        "Aligns with the cadence the user already runs manually.",
+        "One sweep per turn rather than one per edit, so the cost is bounded.",
+        "Can block the next user turn until drift is addressed, which closes the feedback loop.",
+        "Reuses any existing detector by orchestrating it."
+      ],
+      "cons": [
+        "Catches drift at the end of a turn, after the model has already moved on.",
+        "Block decisions need careful thresholds to avoid blocking every turn.",
+        "The sweep itself takes time; the user feels the latency before they can type again."
+      ],
+      "complexity": "S-M",
+      "runtime_cost": "per-turn",
+      "memory_footprint": "small",
+      "sample_visual": {
+        "type": "per-link-health-pills",
+        "description": "Fourteen pill-shaped tiles arranged in a horizontal row, one per chain link. Each pill is colored by the latest sweep result: olive = clean, amber = warnings, red = block-worthy. Below the pills, a stack of per-turn rows shows the history (one row per turn, most recent at top). Hovering a pill expands the underlying check list.",
+        "axes": { "x": "fourteen chain links", "y": "per-turn history" },
+        "encoding": "pill color = health, stack depth = turn count"
+      }
+    },
+    {
+      "id": "chain-layered-tile-board",
+      "name": "Chain Layered Tile Board",
+      "tagline": "The presentation surface for any detector. Fourteen columns of tiles, one column per chain link.",
+      "role": "surface",
+      "summary": "A pure UI layer. The chain is drawn as fourteen vertical columns, one per link. Each column holds a stack of tiles, one per file in that link, in deterministic order. Tile color encodes whichever detector signal is fed in: walker bridge status, eval result, manifest health, sweep verdict. The board is a single HTML file the team can open standalone. It pairs with any detector by reading the detector's JSON output and rendering it.",
+      "covers": ["visualization only"],
+      "triggers": {
+        "primary_hook": "Stop",
+        "matcher": null,
+        "secondary_hooks": ["SubagentStop (refresh on sub-agent completion)", "manual /board"],
+        "fs_triggers": [".ai/**/*.json change refreshes the board if open"],
+        "rationale": "Refresh on every turn boundary. Manual invocation for ad-hoc viewing."
+      },
+      "memory_model": {
+        "type": "Reads detector outputs; no persistent state of its own",
+        "location": "n/a (consumes other approaches)",
+        "files": [
+          "board.html (single-file render)"
+        ],
+        "lifecycle": "Regenerated on demand."
+      },
+      "architecture": {
+        "components": [
+          { "name": "Board skill", "role": "Reads detector outputs and writes board.html." },
+          { "name": "Data adapter", "role": "Normalizes walker, eval, manifest, and sweep outputs into one schema." },
+          { "name": "Renderer", "role": "Builds the tile grid with deterministic positions." }
+        ],
+        "flow": "User runs /board → adapter reads .ai/*/ outputs → renderer writes board.html → browser opens."
+      },
+      "skill_files": [
+        { "path": ".claude/skills/board/SKILL.md", "purpose": "Render the board." },
+        { "path": ".claude/skills/board/scripts/render.mjs", "purpose": "Node renderer." },
+        { "path": ".claude/skills/board/scripts/adapter.mjs", "purpose": "Normalizes detector outputs." }
+      ],
+      "pros": [
+        "Matches the user's stated visualization preference. Tile-based, deterministic positions, readable at a glance.",
+        "Stays presentation-only, so it can be swapped without touching detectors.",
+        "Single-file HTML is shareable and embeddable.",
+        "Acts as the team-facing dashboard for any combination of detectors."
+      ],
+      "cons": [
+        "Needs at least one detector to be wired up to produce a useful render.",
+        "Wide repos make the columns long; needs a folder-bucketed mode.",
+        "Static snapshot rather than live; refresh discipline is up to the user."
+      ],
+      "complexity": "S",
+      "runtime_cost": "on-demand",
+      "memory_footprint": "tiny (one HTML file)",
+      "sample_visual": {
+        "type": "chain-column-tiles",
+        "description": "Fourteen columns labeled by chain link. Inside each column, file tiles stack from top to bottom in deterministic order (by path hash). Tile color encodes the chosen detector's signal. A legend above the columns names which detector is feeding the colors. A small filter strip lets the viewer switch between walker, eval, manifest, and sweep signals without regenerating.",
+        "axes": { "x": "fourteen chain links", "y": "files within a link" },
+        "encoding": "color = detector signal, position = deterministic by file"
+      }
+    }
+  ],
+  "recommended_pairings": [
+    {
+      "name": "Minimum viable harness",
+      "pair": ["edit-fingerprint-heatmap", "stop-hook-drift-sweep"],
+      "why": "Two small skills plus two hooks. The heatmap shows what is being touched; the sweep runs the user's existing checklist deterministically at the end of every turn."
+    },
+    {
+      "name": "Deterministic detector path",
+      "pair": ["symbiotic-chain-evals", "chain-layered-tile-board"],
+      "why": "Evals do the detection deterministically; the board surfaces the results. No LLM in the detection loop."
+    },
+    {
+      "name": "Coverage-first path",
+      "pair": ["chain-walker", "per-file-dependency-manifest", "chain-layered-tile-board"],
+      "why": "Manifests give the walker a fast lookup table; the walker writes drift records; the board renders them."
+    },
+    {
+      "name": "Record-first path",
+      "pair": ["commit-narrative-spine", "edit-fingerprint-heatmap"],
+      "why": "Cheapest to adopt. Discipline at commit time plus a free visual log of what happened."
+    }
+  ],
+  "open_questions": [
+    "Where do the chain bridge rules live? Per-project (.evals/) or per-harness (shared)? The trade-off is reuse versus project fit.",
+    "Should the walker be deterministic-first with an LLM fallback, or LLM-first with deterministic fallback? Cost and noise pull in different directions.",
+    "What is the default block threshold for the stop-hook sweep? Too low produces frustration; too high produces drift.",
+    "Per-file manifests vs one consolidated manifest: at what repo size does the consolidated model win?",
+    "Should the board be a static HTML file written on each Stop, or a long-running local server reading from .ai/ live?"
+  ],
+  "topology": {
+    "name": "Observer Harnesses Around a Builder Project",
+    "model": "filesystem messaging via .tickets/",
+    "principle": "The builder project (Project A) keeps its CLAUDE.md focused on application development. Observer harnesses run as separate Claude Code sessions outside Project A. Each observer watches Project A's filesystem, runs its own checks on changes, and drops tickets into Project A/.tickets/. The builder reads tickets at session and turn boundaries and addresses them like any other work. No observer ever shares context with the builder or with other observers.",
+    "rationale": "A single builder agent stuffed with drift, security, coverage, doc, and style skills becomes unwieldy. The CLAUDE.md grows past the point of usefulness. Splitting the concerns into sidecar agents keeps each one small, lets them run at different cadences and on different models, and produces an auditable record of findings in the ticket folder.",
+    "actors": [
+      {
+        "role": "Builder",
+        "name": "Project A",
+        "location": "the application repo",
+        "responsibility": "Writes features. Reads tickets at session start and at the top of each turn. Addresses them as part of normal work.",
+        "claude_config": "Own CLAUDE.md focused on application skills. SessionStart hook reads .tickets/open/. UserPromptSubmit prepends a one-line summary of open tickets. Stop hook reminds the builder of unresolved tickets."
+      },
+      {
+        "role": "Observer",
+        "name": "Anti-Drift Harness",
+        "location": "sibling directory (for example ../anti-drift-harness/)",
+        "responsibility": "Watches Project A for source edits. Runs the chain walker, evals, manifest, and sweep approaches from this inventory. Writes tickets into Project A/.tickets/open/.",
+        "claude_config": "Own CLAUDE.md, settings.json, skills, and hooks. Knows nothing about app code. Specializes in drift detection across the fourteen-link chain."
+      },
+      {
+        "role": "Observer",
+        "name": "Other harnesses (security, coverage, docs, style, perf)",
+        "location": "sibling directories",
+        "responsibility": "Each watches Project A independently. Each runs its own scans and writes its own tickets. No shared context between them.",
+        "claude_config": "Each has its own minimal CLAUDE.md and skill set. Different observers can run on different models, including cheaper models for routine checks."
+      },
+      {
+        "role": "Bus",
+        "name": "Project A/.tickets/",
+        "location": "inside Project A",
+        "responsibility": "Passive filesystem inbox. One markdown file per ticket. Observers append, builder consumes, archive on resolve.",
+        "claude_config": "Not an agent. A folder with a defined structure."
+      }
+    ],
+    "ticket_schema": {
+      "filename_pattern": ".tickets/open/<observer>-<approach>-<short-hash>.md",
+      "example_filename": ".tickets/open/anti-drift-walker-7a3f9c.md",
+      "frontmatter_fields": [
+        "id: stable hash of (observer + approach + evidence)",
+        "observer: anti-drift-harness",
+        "approach: chain-walker",
+        "severity: low | medium | high",
+        "opened_at: 2026-05-18T14:32:00Z",
+        "files: [src/controllers/reports.ts, openapi.yaml]",
+        "chain_link: api_specs",
+        "status: open"
+      ],
+      "body_sections": [
+        "What changed: one paragraph naming the edit that triggered the ticket.",
+        "Evidence: the bridge diff, eval output, or scanner finding that proves the drift.",
+        "Proposed action: concrete steps the builder can take to close the gap.",
+        "Detector reference: which skill or eval inside the observer raised the ticket."
+      ]
+    },
+    "ticket_lifecycle": [
+      { "state": "open", "folder": ".tickets/open/", "trigger": "Observer writes a new ticket file." },
+      { "state": "acknowledged", "folder": ".tickets/acknowledged/", "trigger": "Builder's SessionStart or UserPromptSubmit hook moves the file after reading it." },
+      { "state": "resolved", "folder": ".tickets/resolved/", "trigger": "Builder writes a resolution note in the file and moves it." },
+      { "state": "archived", "folder": ".tickets/archive/<yyyy-mm>/", "trigger": "Weekly sweep moves resolved tickets older than seven days." }
+    ],
+    "wiring": {
+      "observer_side": [
+        "Node file watcher (chokidar) on Project A's source globs.",
+        "Debounce file changes by 500 ms so a single edit does not spawn N runs.",
+        "On debounced change, the observer's own Claude Code session runs the relevant skill (chain walker, eval set, manifest regenerator).",
+        "Skill output is converted to ticket markdown by a small writer script and dropped into Project A/.tickets/open/.",
+        "Dedupe by content hash so the same finding does not produce multiple open tickets."
+      ],
+      "builder_side": [
+        "SessionStart hook lists files in .tickets/open/ and injects a structured summary via additionalContext.",
+        "UserPromptSubmit hook prepends a one-line summary of open tickets to every user prompt.",
+        "PostToolUse on Write: when the builder edits a file named in a ticket's files list, the hook moves the ticket to .tickets/acknowledged/ and stamps in-progress.",
+        "Stop hook reports any tickets still in open or acknowledged at the end of the turn."
+      ]
+    },
+    "separation_of_duties": [
+      { "duty": "Application code authorship", "owner": "Builder (Project A)" },
+      { "duty": "Chain drift detection", "owner": "Anti-Drift Harness" },
+      { "duty": "Security review", "owner": "Security Harness" },
+      { "duty": "Test coverage gap detection", "owner": "Coverage Harness" },
+      { "duty": "Doc freshness", "owner": "Docs Harness" },
+      { "duty": "Writing style enforcement", "owner": "Style Harness" },
+      { "duty": "Performance budgets", "owner": "Perf Harness" },
+      { "duty": "Message bus", "owner": ".tickets/ folder in Project A" },
+      { "duty": "Ticket resolution", "owner": "Builder" }
+    ],
+    "example_observers": [
+      { "name": "Anti-Drift Harness", "scope": "Chain drift across the fourteen links.", "produces": "Drift tickets keyed by chain transition.", "uses_approaches": ["chain-walker", "symbiotic-chain-evals", "stop-hook-drift-sweep", "per-file-dependency-manifest"], "cadence": "On every Project A file edit (debounced)." },
+      { "name": "Security Harness", "scope": "ASVS and CAS gaps, secret leaks, dependency vulnerabilities.", "produces": "Security findings as tickets.", "uses_approaches": ["red and blue team scanners from CHECKS.md"], "cadence": "On Project A edits to source, dependency files, and config." },
+      { "name": "Coverage Harness", "scope": "Test coverage gaps as the codebase grows.", "produces": "Uncovered-path tickets when new code lands without tests.", "uses_approaches": ["vitest or go test coverage diff", "delta analysis between commits"], "cadence": "On edits to src/ paths and on PR boundaries." },
+      { "name": "Docs Harness", "scope": "README, openapi.yaml, and training docs alignment with code.", "produces": "Doc-drift tickets when endpoints, schemas, or fields fall out of sync with the docs.", "uses_approaches": ["doc-specific evals", "LLM judgement pass for narrative drift"], "cadence": "On Project A edits to routes, schemas, or doc files." },
+      { "name": "Style Harness", "scope": "Writing style guide enforcement in docs, comments, and UI strings.", "produces": "Style-violation tickets per file and per rule.", "uses_approaches": ["yellow team regex rules from CHECKS.md"], "cadence": "On every prose file edit." },
+      { "name": "Perf Harness", "scope": "Bundle size, query plans, render budgets.", "produces": "Perf-budget tickets when a change crosses a threshold.", "uses_approaches": ["build-output diff", "Lighthouse run", "EXPLAIN plan comparison"], "cadence": "On edits to source and on build-output changes." }
+    ],
+    "benefits": [
+      "Builder context stays clean. The application CLAUDE.md focuses on app-building.",
+      "Each observer runs on its own cadence and at its own cost level. Cheap models handle routine checks; stronger models judge the hard cases.",
+      "A failure in one observer does not break the builder. The bus is filesystem; observers are crash-isolated.",
+      "Tickets accumulate as an auditable record of what was caught, when, and how it was resolved.",
+      "Adding a new concern means adding a new observer harness, not editing the builder's CLAUDE.md."
+    ],
+    "caveats": [
+      "The ticket schema needs to be strict or the builder ignores tickets that look noisy.",
+      "Observers can produce duplicates; the dedupe step (stable content hash) is required, not optional.",
+      "Too many observers writing at once can flood the builder; a per-turn ticket cap may be needed.",
+      "Filesystem messaging is async. Reconciliation needs a periodic sweep to catch stuck tickets.",
+      "Each observer runs in its own session and costs tokens. Budget per observer is worth tracking."
+    ]
+  }
+}
