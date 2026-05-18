@@ -33,13 +33,15 @@
   .scroll-fade { mask-image: linear-gradient(to right, transparent 0, black 12px, black calc(100% - 12px), transparent 100%); }
   [v-cloak] { display: none; }
   .chain-strip-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-  .chain-strip-grid > :nth-last-child(-n+2) { grid-column: 1 / -1; }
+  .chain-strip-grid > :first-child,
+  .chain-strip-grid > :last-child { grid-column: 1 / -1; }
   @media (min-width: 640px) {
     .chain-strip-grid { grid-template-columns: repeat(7, minmax(0, 1fr)); }
-    .chain-strip-grid > :nth-last-child(-n+2) { grid-column: auto; }
   }
   @media (min-width: 1024px) {
     .chain-strip-grid { grid-template-columns: repeat(14, minmax(0, 1fr)); }
+    .chain-strip-grid > :first-child,
+    .chain-strip-grid > :last-child { grid-column: auto; }
   }
   .topology-grid { grid-template-columns: 1fr; }
   @media (min-width: 1024px) {

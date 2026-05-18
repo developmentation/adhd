@@ -85,7 +85,7 @@
       { "id": "composables", "label": "Composables" },
       { "id": "components", "label": "Components" },
       { "id": "pages", "label": "Pages" },
-      { "id": "docs", "label": "Documentation" },
+      { "id": "docs", "label": "Docs" },
       { "id": "terraform", "label": "Infra / Terraform" },
       { "id": "externals", "label": "External (CDN/DNS)" },
       { "id": "api_specs", "label": "API Specs" },
