@@ -43,6 +43,10 @@
     .chain-strip-grid > :first-child,
     .chain-strip-grid > :last-child { grid-column: auto; }
   }
+  /* Compact variant for narrow containers (e.g. the hero preview card) — stays at the mobile layout regardless of viewport */
+  .chain-strip-grid-compact { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .chain-strip-grid-compact > :first-child,
+  .chain-strip-grid-compact > :last-child { grid-column: 1 / -1; }
   .topology-grid { grid-template-columns: 1fr; }
   @media (min-width: 1024px) {
     .topology-grid {
@@ -280,7 +284,7 @@
         <div class="corner-bl-light" style="border-color: rgba(0,0,0,0.12);"></div>
         <p class="text-[0.65rem] sm:text-xs uppercase tracking-wider text-[#7a7a7a]">The chain</p>
         <p class="serif italic text-xl sm:text-2xl text-black mt-2 mb-5">requirements through training</p>
-        <div class="grid gap-2 chain-strip-grid" style="--cols-lg: 7;">
+        <div class="grid gap-2 chain-strip-grid-compact">
           <div
             v-for="(link, i) in data.meta.chain"
             :key="link.id"
