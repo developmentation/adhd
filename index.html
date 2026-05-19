@@ -486,23 +486,6 @@
         </article>
       </div>
 
-      <!-- Chain strip in full -->
-      <article class="relative rounded-2xl border border-black/10 bg-white/40 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
-        <div class="corner-tr"></div>
-        <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Canonical chain</p>
-        <h2 class="serif text-2xl sm:text-3xl mt-2 mb-6 text-black">Where drift accumulates</h2>
-        <div class="grid gap-2 chain-strip-grid-compact max-w-3xl">
-          <div
-            v-for="(link, i) in data.meta.chain"
-            :key="link.id"
-            class="rounded-md border border-black/10 bg-white/85 p-3 text-center min-h-[5.5rem] flex flex-col justify-between tile"
-          >
-            <div class="serif text-base text-[#ff5a24]">{{ String(i+1).padStart(2,'0') }}</div>
-            <div class="text-[0.7rem] uppercase tracking-wider text-[#2c2c2c] leading-tight">{{ link.label }}</div>
-          </div>
-        </div>
-      </article>
-
       <!-- Quick approach list -->
       <article class="relative rounded-2xl border border-black/10 bg-white/40 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)]">
         <div class="corner-tr"></div>
