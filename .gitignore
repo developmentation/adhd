@@ -3,7 +3,13 @@ prompt.md
 template.html
 _prompt/prompt.md
 _prompt/template.html
+_prompt/janak-voice-example.md
 _archive/
+
+# Secrets
+.env
+.env.local
+.env.*.local
 
 # Local Claude Code state
 .claude/

@@ -178,6 +178,67 @@
   .ticket-fly-enter-from { opacity: 0; transform: translateX(28px) translateY(-4px); }
   .ticket-fly-leave-to { opacity: 0; transform: translateX(-28px) scale(0.96); }
   .ticket-fly-move { transition: transform 280ms ease-out; }
+  /* Learn tab */
+  .learn-stage { position: relative; min-height: calc(100vh - 220px); padding-bottom: 96px; }
+  @media (min-width: 1024px) { .learn-stage { padding-bottom: 0; min-height: 0; } }
+  .learn-toc { display: none; }
+  .learn-toc.open {
+    display: block;
+    position: fixed;
+    top: 0; right: 0; bottom: 0;
+    width: 280px;
+    background: #f6f5f2;
+    border-left: 1px solid rgba(0,0,0,0.1);
+    box-shadow: -16px 0 40px rgba(0,0,0,0.12);
+    z-index: 60;
+    overflow-y: auto;
+    padding: 1rem;
+  }
+  @media (min-width: 1024px) {
+    .learn-toc, .learn-toc.open {
+      display: block;
+      position: sticky;
+      top: 96px;
+      width: auto;
+      max-height: calc(100vh - 120px);
+      overflow-y: auto;
+      background: transparent;
+      border: none;
+      box-shadow: none;
+      padding: 0;
+    }
+  }
+  .toc-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.35); z-index: 55; }
+  @media (min-width: 1024px) { .toc-backdrop { display: none; } }
+  .learn-player {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    z-index: 50;
+    background: rgba(246,245,242,0.96);
+    backdrop-filter: blur(10px);
+    border-top: 1px solid rgba(0,0,0,0.1);
+    padding: 0.75rem 1rem;
+  }
+  @media (min-width: 1024px) {
+    .learn-player {
+      position: relative;
+      background: rgba(255,255,255,0.6);
+      backdrop-filter: none;
+      border: 1px solid rgba(0,0,0,0.1);
+      border-radius: 0.75rem;
+      padding: 0.75rem 1rem;
+    }
+  }
+  .slide-fade-enter-active, .slide-fade-leave-active {
+    transition: opacity 420ms cubic-bezier(0.22,1,0.36,1), transform 420ms cubic-bezier(0.22,1,0.36,1);
+  }
+  .slide-fade-enter-from { opacity: 0; transform: translateY(12px); }
+  .slide-fade-leave-to { opacity: 0; transform: translateY(-8px); position: absolute; left: 0; right: 0; top: 0; }
+  .slide-fade-leave-active { position: absolute; left: 0; right: 0; top: 0; }
+  .learn-slide-host { position: relative; min-height: 360px; }
+  @media (min-width: 1024px) { .learn-slide-host { min-height: 520px; } }
+  .progress-track { position: relative; height: 3px; background: rgba(0,0,0,0.1); border-radius: 999px; overflow: hidden; }
+  .progress-fill { position: absolute; left: 0; top: 0; bottom: 0; background: #ff5a24; border-radius: 999px; transition: width 200ms linear; }
 </style>
 </head>
 <body class="min-h-screen overflow-x-hidden antialiased">
@@ -464,6 +525,282 @@
           </button>
         </div>
       </article>
+    </section>
+
+    <!-- ===================== LEARN ===================== -->
+    <section v-if="tab === 'learn'" class="learn-stage">
+      <div v-if="!learnScript && !learnError" class="text-sm text-[#7a7a7a]">Loading walkthrough…</div>
+      <div v-else-if="learnError" class="text-sm text-[#d04a2a]">{{ learnError }}</div>
+
+      <template v-else-if="learnScript && currentLearnSlide">
+        <!-- TOC backdrop (mobile) -->
+        <div v-if="tocOpen" class="toc-backdrop lg:hidden" @click="tocOpen = false"></div>
+
+        <!-- Top bar -->
+        <div class="mb-4 flex items-start justify-between gap-3">
+          <div class="min-w-0">
+            <p class="text-xs uppercase tracking-wider text-[#7a7a7a]">Walkthrough · {{ learnScript.meta.title }}</p>
+            <h2 class="serif text-2xl sm:text-3xl lg:text-4xl text-black mt-1 leading-tight truncate">{{ currentLearnSlide.title }}</h2>
+            <p class="text-xs text-[#7a7a7a] mt-1 font-mono">{{ String(learnIndex+1).padStart(2,'0') }} / {{ String(learnTotal).padStart(2,'0') }}</p>
+          </div>
+          <button
+            @click="tocOpen = !tocOpen"
+            class="lg:hidden shrink-0 rounded-md border border-black/15 bg-white/70 px-3 py-2 text-xs uppercase tracking-wider hover:bg-white">
+            {{ tocOpen ? 'Close' : 'Contents' }}
+          </button>
+        </div>
+
+        <!-- Overall progress -->
+        <div class="progress-track mb-4">
+          <div class="progress-fill" :style="{ width: learnOverallPercent + '%' }"></div>
+        </div>
+
+        <div class="grid lg:grid-cols-[260px_1fr] gap-4 sm:gap-6">
+          <!-- TOC -->
+          <aside class="learn-toc" :class="tocOpen ? 'open' : ''">
+            <p class="text-[0.6rem] uppercase tracking-wider text-[#7a7a7a] mb-2 px-1 hidden lg:block">Contents</p>
+            <p class="text-xs uppercase tracking-wider text-[#7a7a7a] mb-3 lg:hidden font-medium">Contents</p>
+            <div class="space-y-1">
+              <button
+                v-for="(s, i) in learnScript.slides"
+                :key="s.id"
+                @click="learnGoTo(i)"
+                :class="['w-full text-left rounded-md border px-3 py-2 text-xs transition flex items-center gap-3',
+                         i === learnIndex
+                           ? 'bg-[#111111] text-white border-black/40'
+                           : 'bg-white/60 border-black/10 text-[#252525] hover:bg-white']">
+                <span :class="['font-mono shrink-0', i === learnIndex ? 'text-[#ff6330]' : 'text-[#ff5a24]']">{{ s.id }}</span>
+                <span class="truncate">{{ s.title }}</span>
+              </button>
+            </div>
+          </aside>
+
+          <!-- Slide stage + player -->
+          <div class="min-w-0">
+            <div class="learn-slide-host rounded-2xl border border-black/10 bg-white/55 p-5 sm:p-7 lg:p-8 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] overflow-hidden">
+              <div class="corner-tr"></div>
+              <transition name="slide-fade" mode="out-in">
+                <div :key="currentLearnSlide.id" class="slide-content">
+
+                  <!-- Title slide -->
+                  <div v-if="currentLearnSlide.visual === 'title'" class="flex flex-col justify-center min-h-[300px] lg:min-h-[440px]">
+                    <p class="text-xs uppercase tracking-wider text-[#ff5a24] font-medium mb-3">{{ currentLearnSlide.caption || 'Anti-Drift Harness' }}</p>
+                    <h3 class="serif text-3xl sm:text-4xl lg:text-6xl text-black leading-[1.04]">{{ currentLearnSlide.title }}</h3>
+                    <p v-if="currentLearnSlide.subcaption" class="serif italic text-xl sm:text-2xl lg:text-3xl text-[#ff5a24] leading-tight mt-4">{{ currentLearnSlide.subcaption }}</p>
+                  </div>
+
+                  <!-- Loop phase slide -->
+                  <div v-else-if="currentLearnSlide.visual === 'loop-phase' && learnLoopPhase">
+                    <p class="text-[0.65rem] uppercase tracking-wider font-medium mb-3" :class="loopLabelClass(learnLoopPhase.tone)">{{ learnLoopPhase.label }}</p>
+                    <h3 class="serif text-2xl sm:text-3xl lg:text-4xl text-black mb-4 leading-tight">{{ learnLoopPhase.title }}</h3>
+                    <p class="text-base sm:text-lg text-[#252525] leading-relaxed max-w-3xl">{{ learnLoopPhase.body }}</p>
+                    <p v-if="currentLearnSlide.caption" class="serif italic text-[#ff5a24] text-base mt-6">{{ currentLearnSlide.caption }}</p>
+                  </div>
+
+                  <!-- Problem stat slide -->
+                  <div v-else-if="currentLearnSlide.visual === 'problem-stat' && learnProblemStat">
+                    <p class="text-[0.65rem] uppercase tracking-wider text-[#ff5a24] font-medium mb-2">{{ learnProblemStat.label }}</p>
+                    <h3 class="serif text-2xl sm:text-3xl lg:text-4xl text-black mb-5 leading-tight">{{ learnProblemStat.title }}</h3>
+                    <div class="grid grid-cols-3 gap-3 sm:gap-6 mt-4">
+                      <div v-for="s in learnProblemStat.stats" :key="s.label" class="rounded-xl border border-black/10 bg-[#1b1c1b] text-white p-4 sm:p-6">
+                        <div class="serif text-3xl sm:text-5xl lg:text-6xl text-[#ff6330] leading-none">{{ s.value }}</div>
+                        <div class="text-[0.65rem] sm:text-xs uppercase tracking-wider text-white/70 mt-3 leading-snug">{{ s.label }}</div>
+                      </div>
+                    </div>
+                    <p class="text-sm sm:text-base text-[#4c4c4c] mt-5 leading-snug max-w-2xl">{{ learnProblemStat.footer }}</p>
+                  </div>
+
+                  <!-- Chain strip slide -->
+                  <div v-else-if="currentLearnSlide.visual === 'chain-strip'">
+                    <p class="text-[0.65rem] uppercase tracking-wider text-[#ff5a24] font-medium mb-2">{{ currentLearnSlide.caption || 'The chain' }}</p>
+                    <h3 class="serif text-2xl sm:text-3xl lg:text-4xl text-black mb-5 leading-tight">{{ currentLearnSlide.title }}</h3>
+                    <div class="grid gap-2 chain-strip-grid">
+                      <div v-for="(link, i) in data.meta.chain" :key="link.id" class="rounded-md border border-black/10 bg-white/90 px-1.5 py-3 text-center flex flex-col items-center justify-start min-h-[4rem]">
+                        <div class="serif text-base text-[#ff5a24] leading-none italic">{{ String(i+1).padStart(2,'0') }}</div>
+                        <div class="text-[0.55rem] uppercase tracking-wider text-[#2c2c2c] leading-tight mt-2 break-words" style="word-break: break-word;">{{ link.label }}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Chain break sim -->
+                  <div v-else-if="currentLearnSlide.visual === 'chain-break-sim'">
+                    <p class="text-[0.65rem] uppercase tracking-wider text-[#ff5a24] font-medium mb-2">{{ currentLearnSlide.caption || 'Drift made visible' }}</p>
+                    <h3 class="serif text-2xl sm:text-3xl text-black mb-5 leading-tight">{{ currentLearnSlide.title }}</h3>
+                    <chain-break-sim :chain="data.meta.chain"></chain-break-sim>
+                  </div>
+
+                  <!-- Problem chain (one-hop diagram = chain strip with annotation) -->
+                  <div v-else-if="currentLearnSlide.visual === 'problem-chain'">
+                    <p class="text-[0.65rem] uppercase tracking-wider text-[#ff5a24] font-medium mb-2">{{ currentLearnSlide.caption }}</p>
+                    <h3 class="serif text-2xl sm:text-3xl lg:text-4xl text-black mb-5 leading-tight">{{ currentLearnSlide.title }}</h3>
+                    <div class="grid gap-2 chain-strip-grid mb-4">
+                      <div v-for="(link, i) in data.meta.chain" :key="link.id" class="rounded-md border border-black/10 px-1.5 py-3 text-center flex flex-col items-center justify-start min-h-[4rem]"
+                        :style="`background-color: ${i === 6 ? '#ff5a24' : (i === 5 || i === 7 ? 'rgba(212,154,58,0.25)' : 'rgba(208,74,42,0.18)')}; ${i === 6 ? 'color: white;' : ''}`">
+                        <div class="serif text-base leading-none italic" :class="i === 6 ? 'text-white' : 'text-[#ff5a24]'">{{ String(i+1).padStart(2,'0') }}</div>
+                        <div class="text-[0.55rem] uppercase tracking-wider leading-tight mt-2 break-words" :class="i === 6 ? 'text-white' : 'text-[#2c2c2c]'" style="word-break: break-word;">{{ link.label }}</div>
+                      </div>
+                    </div>
+                    <div class="flex gap-3 text-[0.65rem] uppercase tracking-wider text-[#7a7a7a] flex-wrap">
+                      <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full bg-[#ff5a24]"></span>edit</span>
+                      <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full" style="background:rgba(212,154,58,0.6)"></span>one hop</span>
+                      <span class="flex items-center gap-1.5"><span class="w-2 h-2 rounded-full" style="background:rgba(208,74,42,0.6)"></span>stale</span>
+                    </div>
+                  </div>
+
+                  <!-- Approaches overview -->
+                  <div v-else-if="currentLearnSlide.visual === 'approaches-overview'">
+                    <p class="text-[0.65rem] uppercase tracking-wider text-[#ff5a24] font-medium mb-2">{{ currentLearnSlide.caption }}</p>
+                    <h3 class="serif text-2xl sm:text-3xl lg:text-4xl text-black mb-5 leading-tight">{{ currentLearnSlide.title }}</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                      <div v-for="(a, i) in data.approaches" :key="a.id"
+                        class="rounded-xl border border-black/10 bg-white/85 p-4 relative overflow-hidden"
+                        :style="`border-left: 4px solid ${approachAccent(a.id).color};`">
+                        <div class="flex items-baseline justify-between mb-1">
+                          <div class="flex items-baseline gap-2">
+                            <span class="serif italic text-[#ff5a24]">{{ String(i+1).padStart(2,'0') }}</span>
+                            <span class="font-mono text-base leading-none" :style="`color: ${approachAccent(a.id).color};`">{{ approachAccent(a.id).glyph }}</span>
+                          </div>
+                          <span class="text-[0.55rem] uppercase tracking-wider px-1.5 py-0.5 rounded border" :class="roleClasses(a.role)">{{ a.role }}</span>
+                        </div>
+                        <div class="serif text-base text-black leading-tight">{{ a.name }}</div>
+                        <div class="text-xs text-[#4c4c4c] leading-snug mt-1.5">{{ a.tagline }}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Approach detail (drives a specific approach) -->
+                  <div v-else-if="currentLearnSlide.visual === 'approach-detail' && learnApproachForSlide">
+                    <div class="flex items-center gap-3 mb-3 flex-wrap">
+                      <span class="serif italic text-[#ff5a24] text-2xl">{{ String(data.approaches.findIndex(a => a.id === learnApproachForSlide.id) + 1).padStart(2,'0') }}</span>
+                      <span class="font-mono text-2xl leading-none" :style="`color: ${approachAccent(learnApproachForSlide.id).color};`">{{ approachAccent(learnApproachForSlide.id).glyph }}</span>
+                      <span class="text-[0.6rem] uppercase tracking-wider rounded-full px-2 py-0.5 border" :class="roleClasses(learnApproachForSlide.role)">{{ learnApproachForSlide.role }}</span>
+                    </div>
+                    <h3 class="serif text-2xl sm:text-3xl lg:text-4xl text-black leading-tight">{{ learnApproachForSlide.name }}</h3>
+                    <p class="text-base sm:text-lg text-[#252525] leading-snug mt-3 max-w-3xl">{{ learnApproachForSlide.tagline }}</p>
+                    <div class="mt-5 grid gap-3 sm:grid-cols-2 text-xs">
+                      <div class="rounded-md border border-black/10 bg-white/85 p-3">
+                        <div class="text-[0.6rem] uppercase tracking-wider text-[#7a7a7a]">Role</div>
+                        <div class="font-mono mt-1 text-[#252525]">{{ learnApproachForSlide.role }}</div>
+                      </div>
+                      <div class="rounded-md border border-black/10 bg-white/85 p-3">
+                        <div class="text-[0.6rem] uppercase tracking-wider text-[#7a7a7a]">Primary hook</div>
+                        <div class="font-mono mt-1 text-[#252525]">{{ learnApproachForSlide.triggers.primary_hook }}<span v-if="learnApproachForSlide.triggers.matcher"> · {{ learnApproachForSlide.triggers.matcher }}</span></div>
+                      </div>
+                    </div>
+                    <div class="mt-5">
+                      <component :is="visualComponent(learnApproachForSlide.sample_visual.type)" :spec="learnApproachForSlide.sample_visual" :chain="data.meta.chain"></component>
+                    </div>
+                  </div>
+
+                  <!-- Topology architecture (simplified for slide) -->
+                  <div v-else-if="currentLearnSlide.visual === 'topology-architecture'">
+                    <p class="text-[0.65rem] uppercase tracking-wider text-[#ff5a24] font-medium mb-2">{{ currentLearnSlide.caption }}</p>
+                    <h3 class="serif text-2xl sm:text-3xl lg:text-4xl text-black mb-5 leading-tight">{{ currentLearnSlide.title }}</h3>
+                    <div class="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-5">
+                      <div class="rounded-xl border border-black/10 bg-[#1b1c1b] text-white p-4">
+                        <div class="text-[0.6rem] uppercase tracking-wider text-white/60 mb-2">Observers</div>
+                        <div class="space-y-1.5">
+                          <div v-for="ob in (data.topology?.example_observers || []).slice(0,5)" :key="ob.name" class="text-xs">{{ ob.name }}</div>
+                        </div>
+                      </div>
+                      <div class="rounded-xl border border-[#ff5a24]/40 bg-[#ff5a24]/8 p-4">
+                        <div class="text-[0.6rem] uppercase tracking-wider text-[#ff5a24] mb-2">Bus · .tickets/</div>
+                        <div class="font-mono text-xs text-[#252525] space-y-1">
+                          <div>open/</div>
+                          <div>acknowledged/</div>
+                          <div>resolved/</div>
+                          <div>archive/</div>
+                        </div>
+                      </div>
+                      <div class="rounded-xl border border-black/10 bg-white/85 p-4">
+                        <div class="text-[0.6rem] uppercase tracking-wider text-[#7a7a7a] mb-2">Builder · Project A</div>
+                        <div class="serif italic text-3xl text-[#ff5a24] leading-none mb-2">A</div>
+                        <div class="text-xs text-[#252525] leading-snug">Reads tickets at session start and turn boundaries.</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Anti-Drift Board (reused) -->
+                  <div v-else-if="currentLearnSlide.visual === 'anti-drift-board'">
+                    <p class="text-[0.65rem] uppercase tracking-wider text-[#ff5a24] font-medium mb-2">{{ currentLearnSlide.caption }}</p>
+                    <h3 class="serif text-2xl sm:text-3xl text-black mb-5 leading-tight">{{ currentLearnSlide.title }}</h3>
+                    <anti-drift-board :chain="data.meta.chain"></anti-drift-board>
+                  </div>
+
+                  <!-- Ticket schema -->
+                  <div v-else-if="currentLearnSlide.visual === 'ticket-schema' && data.topology">
+                    <p class="text-[0.65rem] uppercase tracking-wider text-[#ff5a24] font-medium mb-2">{{ currentLearnSlide.caption }}</p>
+                    <h3 class="serif text-2xl sm:text-3xl lg:text-4xl text-black mb-5 leading-tight">{{ currentLearnSlide.title }}</h3>
+                    <div class="grid lg:grid-cols-2 gap-4">
+                      <div>
+                        <div class="text-[0.6rem] uppercase tracking-wider text-[#7a7a7a] mb-2">Example file</div>
+                        <div class="font-mono text-sm text-[#111111] rounded-md border border-[#ff5a24]/30 bg-[#ff5a24]/8 p-3 break-all">{{ data.topology.ticket_schema.example_filename }}</div>
+                        <div class="text-[0.6rem] uppercase tracking-wider text-[#7a7a7a] mb-2 mt-4">Frontmatter</div>
+                        <div class="font-mono text-xs text-[#111111] rounded-md border border-black/10 bg-[#fafaf7] p-3 space-y-1">
+                          <div class="text-[#7a7a7a]">---</div>
+                          <div v-for="f in data.topology.ticket_schema.frontmatter_fields.slice(0, 6)" :key="f">{{ f }}</div>
+                          <div class="text-[#7a7a7a]">---</div>
+                        </div>
+                      </div>
+                      <div>
+                        <div class="text-[0.6rem] uppercase tracking-wider text-[#7a7a7a] mb-2">Lifecycle</div>
+                        <div class="space-y-2">
+                          <div v-for="state in data.topology.ticket_lifecycle" :key="state.state" class="rounded-md border p-3 text-sm" :class="ticketStateClasses(state.state)">
+                            <div class="font-mono text-xs" :class="ticketStateLabelClass(state.state)">{{ state.folder }}</div>
+                            <div class="text-[#252525] mt-1">{{ state.trigger }}</div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- Burn down sim -->
+                  <div v-else-if="currentLearnSlide.visual === 'burn-down-sim'">
+                    <p class="text-[0.65rem] uppercase tracking-wider text-[#ff5a24] font-medium mb-2">{{ currentLearnSlide.caption }}</p>
+                    <h3 class="serif text-2xl sm:text-3xl text-black mb-5 leading-tight">{{ currentLearnSlide.title }}</h3>
+                    <burn-down-sim></burn-down-sim>
+                  </div>
+
+                  <!-- Fallback -->
+                  <div v-else class="text-sm text-[#7a7a7a]">Slide visual: {{ currentLearnSlide.visual }}</div>
+
+                </div>
+              </transition>
+            </div>
+
+            <!-- Player bar -->
+            <div class="learn-player mt-4 flex items-center gap-3 flex-wrap">
+              <button @click="learnPrev" :disabled="learnIndex === 0"
+                :class="['rounded-md border px-3 py-2 text-xs uppercase tracking-wider transition',
+                         learnIndex === 0 ? 'opacity-40 cursor-not-allowed border-black/10 bg-white/40' : 'border-black/15 bg-white/80 hover:bg-white']">
+                ← Prev
+              </button>
+              <button @click="learnTogglePlay"
+                class="rounded-md border border-[#ff5a24] bg-[#ff5a24] text-white px-4 py-2 text-xs uppercase tracking-wider hover:bg-[#e85021] flex items-center gap-2">
+                <span v-if="learnPlaying">❚❚ Pause</span>
+                <span v-else>▶ Play</span>
+              </button>
+              <button @click="learnNext" :disabled="learnIndex >= learnTotal - 1"
+                :class="['rounded-md border px-3 py-2 text-xs uppercase tracking-wider transition',
+                         learnIndex >= learnTotal - 1 ? 'opacity-40 cursor-not-allowed border-black/10 bg-white/40' : 'border-black/15 bg-white/80 hover:bg-white']">
+                Next →
+              </button>
+              <button @click="learnRestart"
+                class="rounded-md border border-black/15 bg-white/80 px-3 py-2 text-xs uppercase tracking-wider hover:bg-white">↻</button>
+              <div class="flex-1 min-w-[120px] flex items-center gap-2">
+                <span class="font-mono text-[0.65rem] text-[#7a7a7a] tabular-nums shrink-0">{{ learnFormatTime(learnCurrentTime) }} / {{ learnFormatTime(learnDuration) }}</span>
+                <div class="progress-track flex-1">
+                  <div class="progress-fill" :style="{ width: learnProgressPercent + '%' }"></div>
+                </div>
+              </div>
+              <label class="text-[0.6rem] uppercase tracking-wider text-[#7a7a7a] flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" v-model="learnAutoAdvance" class="accent-[#ff5a24]">
+                auto-advance
+              </label>
+            </div>
+          </div>
+        </div>
+      </template>
     </section>
 
     <!-- ===================== APPROACHES ===================== -->
@@ -2567,12 +2904,21 @@
         loadError: null,
         tabs: [
           { id: 'overview', label: 'Overview' },
+          { id: 'learn', label: 'Learn' },
           { id: 'approaches', label: 'Approaches' },
           { id: 'topology', label: 'Topology' },
           { id: 'compare', label: 'Compare' },
           { id: 'pairings', label: 'Pairings' },
           { id: 'questions', label: 'Open questions' }
-        ]
+        ],
+        learnScript: null,
+        learnIndex: 0,
+        learnPlaying: false,
+        learnCurrentTime: 0,
+        learnDuration: 0,
+        tocOpen: false,
+        learnAutoAdvance: true,
+        learnError: null
       };
     },
     async mounted() {
@@ -2583,7 +2929,6 @@
         this.selectedApproachId = this.data.approaches[0]?.id || null;
       } catch (err) {
         this.loadError = err.message;
-        // Inline fallback so the page degrades when opened via file:// without a server
         const inline = document.getElementById('approaches-data');
         if (inline) {
           try {
@@ -2591,6 +2936,40 @@
             this.selectedApproachId = this.data.approaches[0]?.id || null;
           } catch (_) { /* show error below */ }
         }
+      }
+      // Load the Learn-tab script (best effort)
+      try {
+        const lres = await fetch('./learn-script.json');
+        if (lres.ok) this.learnScript = await lres.json();
+      } catch (e) {
+        this.learnError = 'Learn script unavailable.';
+      }
+      // Audio element
+      this.learnAudio = new Audio();
+      this.learnAudio.preload = 'auto';
+      this.learnAudio.addEventListener('timeupdate', () => {
+        this.learnCurrentTime = this.learnAudio.currentTime || 0;
+      });
+      this.learnAudio.addEventListener('loadedmetadata', () => {
+        this.learnDuration = this.learnAudio.duration || 0;
+      });
+      this.learnAudio.addEventListener('ended', () => {
+        if (this.learnAutoAdvance && this.learnScript && this.learnIndex < this.learnScript.slides.length - 1) {
+          this.learnIndex += 1;
+          this.$nextTick(() => this.loadCurrentLearnAudio(true));
+        } else {
+          this.learnPlaying = false;
+        }
+      });
+      this.learnAudio.addEventListener('error', () => {
+        this.learnError = 'Audio failed to load.';
+        this.learnPlaying = false;
+      });
+    },
+    beforeUnmount() {
+      if (this.learnAudio) {
+        this.learnAudio.pause();
+        this.learnAudio.src = '';
       }
     },
     computed: {
@@ -2602,6 +2981,39 @@
         if (!this.data || !this.selectedApproach) return '';
         const i = this.data.approaches.findIndex(a => a.id === this.selectedApproachId);
         return String(i + 1).padStart(2, '0');
+      },
+      currentLearnSlide() {
+        if (!this.learnScript) return null;
+        return this.learnScript.slides[this.learnIndex] || null;
+      },
+      learnTotal() {
+        return this.learnScript ? this.learnScript.slides.length : 0;
+      },
+      learnProgressPercent() {
+        if (!this.learnDuration) return 0;
+        return Math.min(100, (this.learnCurrentTime / this.learnDuration) * 100);
+      },
+      learnOverallPercent() {
+        if (!this.learnTotal) return 0;
+        const base = (this.learnIndex / this.learnTotal) * 100;
+        const slice = this.learnDuration ? (this.learnCurrentTime / this.learnDuration) * (100 / this.learnTotal) : 0;
+        return Math.min(100, base + slice);
+      },
+      learnApproachForSlide() {
+        if (!this.currentLearnSlide || !this.data) return null;
+        const cfg = this.currentLearnSlide.visual_config;
+        if (!cfg || !cfg.approach_id) return null;
+        return this.data.approaches.find(a => a.id === cfg.approach_id);
+      },
+      learnLoopPhase() {
+        if (!this.currentLearnSlide || !this.data) return null;
+        const cfg = this.currentLearnSlide.visual_config;
+        if (!cfg || cfg.phase_index == null) return null;
+        return this.data.meta.virtuous_loop?.phases?.[cfg.phase_index];
+      },
+      learnProblemStat() {
+        if (!this.data) return null;
+        return this.data.meta.problem_statement?.cards?.find(c => c.kind === 'stat') || null;
       }
     },
     methods: {
@@ -2705,6 +3117,69 @@
         if (tone === 'system') return 'text-[#ff6330]';
         return 'text-[#7a7a7a]';
       },
+      loadCurrentLearnAudio(autoplay) {
+        if (!this.learnAudio || !this.currentLearnSlide) return;
+        const src = this.currentLearnSlide.audio_file;
+        if (!src) return;
+        this.learnError = null;
+        this.learnCurrentTime = 0;
+        this.learnDuration = 0;
+        this.learnAudio.src = src;
+        if (autoplay) {
+          const p = this.learnAudio.play();
+          if (p && p.then) {
+            p.then(() => { this.learnPlaying = true; }).catch(() => { this.learnPlaying = false; });
+          }
+        }
+      },
+      learnPlay() {
+        if (!this.learnAudio) return;
+        if (!this.learnAudio.src && this.currentLearnSlide) {
+          this.learnAudio.src = this.currentLearnSlide.audio_file;
+        }
+        const p = this.learnAudio.play();
+        if (p && p.then) {
+          p.then(() => { this.learnPlaying = true; }).catch(() => { this.learnPlaying = false; });
+        }
+      },
+      learnPause() {
+        if (this.learnAudio) this.learnAudio.pause();
+        this.learnPlaying = false;
+      },
+      learnTogglePlay() {
+        if (this.learnPlaying) this.learnPause();
+        else this.learnPlay();
+      },
+      learnNext() {
+        if (!this.learnScript) return;
+        if (this.learnIndex < this.learnScript.slides.length - 1) {
+          this.learnIndex += 1;
+          this.$nextTick(() => this.loadCurrentLearnAudio(this.learnPlaying));
+        }
+      },
+      learnPrev() {
+        if (this.learnIndex > 0) {
+          this.learnIndex -= 1;
+          this.$nextTick(() => this.loadCurrentLearnAudio(this.learnPlaying));
+        }
+      },
+      learnGoTo(i) {
+        if (!this.learnScript) return;
+        if (i < 0 || i >= this.learnScript.slides.length) return;
+        this.learnIndex = i;
+        this.tocOpen = false;
+        this.$nextTick(() => this.loadCurrentLearnAudio(this.learnPlaying));
+      },
+      learnRestart() {
+        this.learnIndex = 0;
+        this.$nextTick(() => this.loadCurrentLearnAudio(true));
+      },
+      learnFormatTime(s) {
+        if (!isFinite(s) || s < 0) return '0:00';
+        const m = Math.floor(s / 60);
+        const r = Math.floor(s % 60);
+        return `${m}:${r < 10 ? '0' : ''}${r}`;
+      },
       approachAccent(id) {
         const map = {
           'chain-walker': { color: '#0ea5e9', glyph: '→', label: 'walker' },
@@ -2716,6 +3191,14 @@
           'chain-layered-tile-board': { color: '#ff5a24', glyph: '▦', label: 'board' }
         };
         return map[id] || { color: '#7a7a7a', glyph: '·', label: '' };
+      }
+    },
+    watch: {
+      tab(newTab) {
+        if (newTab !== 'learn' && this.learnAudio) {
+          this.learnAudio.pause();
+          this.learnPlaying = false;
+        }
       }
     },
     components: {

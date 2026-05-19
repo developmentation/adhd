@@ -1,0 +1,227 @@
+{
+  "meta": {
+    "title": "Anti-Drift Harness",
+    "subtitle": "A guided walkthrough",
+    "voice_model": "eleven_flash_v2_5",
+    "audio_dir": "audio/learn",
+    "approx_total_seconds": 870
+  },
+  "slides": [
+    {
+      "id": "01",
+      "title": "Welcome",
+      "audio_file": "audio/learn/01.mp3",
+      "visual": "title",
+      "caption": "Anti-Drift Harness Development",
+      "subcaption": "A tour of how AI coding agents drift, and how to keep them in sync",
+      "text": "Hello. I'm Janak Alford, and this is a tour of the Anti-Drift Harness, a system I've been building for working with Claude Code on real codebases. The short version. AI is excellent at writing code that runs. It is not as good at writing code that stays consistent with the rest of the project. That gap is what this site is about."
+    },
+    {
+      "id": "02",
+      "title": "My practice",
+      "audio_file": "audio/learn/02.mp3",
+      "visual": "loop-phase",
+      "visual_config": { "phase_index": 0 },
+      "caption": "Pause every three to five turns",
+      "text": "I work with AI every day. Over time I've developed a cadence. Every three to five major turns, I pause and push the agent to check for drift. I ask, does the README still line up with the API routes, does the OpenAPI spec match the controllers, is the test coverage holding, are the docs current. It works. It also relies entirely on me remembering to do it."
+    },
+    {
+      "id": "03",
+      "title": "The numbers",
+      "audio_file": "audio/learn/03.mp3",
+      "visual": "problem-stat",
+      "caption": "Functional is not the same as well structured",
+      "text": "My experience is that about 97 to 99 percent of the code Claude generates is functionally correct. It runs. The tests pass. But only about 90 percent is well structured. The remaining gap is rework, and most of it shows up as drift between related files. That gap compounds over weeks and months of work on a project."
+    },
+    {
+      "id": "04",
+      "title": "What we'll cover",
+      "audio_file": "audio/learn/04.mp3",
+      "visual": "title",
+      "caption": "The plan",
+      "subcaption": "The problem, the loop, seven approaches, the topology",
+      "text": "Today I want to walk you through what I'm building to make that drift visible and to address it. We'll cover the problem, the design loop, seven different approaches, and the larger system that ties them together. Let's start with the chain."
+    },
+    {
+      "id": "05",
+      "title": "The chain",
+      "audio_file": "audio/learn/05.mp3",
+      "visual": "chain-strip",
+      "caption": "Fourteen links from requirements to change management",
+      "text": "Drift accumulates along a chain of related artefacts. It runs from requirements, into the database schema, the migrations, the controllers, the routers, the middleware, the composables, the components, the pages, the docs, the terraform, the externals, the API specs, and finally the training material. Fourteen links. Any change has to propagate the full length."
+    },
+    {
+      "id": "06",
+      "title": "The one-hop problem",
+      "audio_file": "audio/learn/06.mp3",
+      "visual": "problem-chain",
+      "caption": "Edits stop after one or two hops",
+      "text": "When the model edits one link, it usually touches the one or two direct neighbours. The change propagates one hop, then stops. The rest of the chain has no idea the edit happened. Later, when the model is working on a different part of the chain, it reads the now-stale neighbours as ground truth and rebuilds against them. The chain breaks further."
+    },
+    {
+      "id": "07",
+      "title": "Watch the drift",
+      "audio_file": "audio/learn/07.mp3",
+      "visual": "chain-break-sim",
+      "caption": "A change in one place, drift everywhere else",
+      "text": "Here you can see it in action. The Builder agent edits three different links. Each edit reaches the direct neighbours, then stops. Everything else stays as it was, except now it is out of date. The red flash is drift made visible. The Builder doesn't see it. The user doesn't see it. The model has moved on."
+    },
+    {
+      "id": "08",
+      "title": "Two directions",
+      "audio_file": "audio/learn/08.mp3",
+      "visual": "title",
+      "caption": "Horizontal and vertical drift",
+      "subcaption": "Within one feature, and across features",
+      "text": "Drift spreads in two directions. Horizontally along one feature, when a new API does not match the data model. And vertically across features, when a schema change should ripple through every feature that touches that table. The harness has to catch both."
+    },
+    {
+      "id": "09",
+      "title": "Human cadence",
+      "audio_file": "audio/learn/09.mp3",
+      "visual": "loop-phase",
+      "visual_config": { "phase_index": 0 },
+      "caption": "The original loop",
+      "text": "The original loop is the one I run on a personal cadence. Pause, check, fix. It works because I remember to run it. The harness exists so that the loop runs whether I remember or not. Think of it as systematising a personal practice."
+    },
+    {
+      "id": "10",
+      "title": "Externalised",
+      "audio_file": "audio/learn/10.mp3",
+      "visual": "loop-phase",
+      "visual_config": { "phase_index": 1 },
+      "caption": "Cadence becomes a hook, checks become scripts",
+      "text": "The first move is to externalise the discipline. The checks become deterministic eval scripts. The pause becomes a Stop hook, a PostToolUse hook, an external chokidar watcher. The cadence moves out of my memory and into the harness. The same checks run regardless of who is at the keyboard."
+    },
+    {
+      "id": "11",
+      "title": "Cooperating agents",
+      "audio_file": "audio/learn/11.mp3",
+      "visual": "loop-phase",
+      "visual_config": { "phase_index": 2 },
+      "caption": "Builder, watcher, and scripts in concert",
+      "text": "The second move is to coordinate different kinds of agent. A Builder language model writes application code. Deterministic scripts run continuously on the filesystem and produce evidence. An Anti-Drift language model reads the evidence on its own slower cadence and decides whether to file a ticket. Three different kinds of agent, each with its own job."
+    },
+    {
+      "id": "12",
+      "title": "Self-healing growth",
+      "audio_file": "audio/learn/12.mp3",
+      "visual": "loop-phase",
+      "visual_config": { "phase_index": 3 },
+      "caption": "The loop expands with the project",
+      "text": "The third move is to let the system grow with the project. New chain links appear. New eval scripts scaffold next to them. The walker learns the new transitions. The discipline carries forward without requiring human memory. The personal practice becomes a property of the project."
+    },
+    {
+      "id": "13",
+      "title": "Seven approaches",
+      "audio_file": "audio/learn/13.mp3",
+      "visual": "approaches-overview",
+      "caption": "Pick a detector, pick a surface",
+      "text": "Now to the seven approaches. Each one is a different way to detect or surface drift. Some are detectors, some are presentation layers. The team picks at least one detector and at least one surface. Let me walk through each."
+    },
+    {
+      "id": "14",
+      "title": "Chain Walker",
+      "audio_file": "audio/learn/14.mp3",
+      "visual": "approach-detail",
+      "visual_config": { "approach_id": "chain-walker" },
+      "caption": "Bridges built across the chain",
+      "text": "The Chain Walker traces a touched file up and down the chain. It crawls outward from the edit, computes a bridge between each pair of neighbouring links, and writes a drift record when the bridge fails. The walker is a deterministic script, not a language model. You'll see it crawl across the chain, drawing bridges as it goes."
+    },
+    {
+      "id": "15",
+      "title": "Edit Fingerprint Heatmap",
+      "audio_file": "audio/learn/15.mp3",
+      "visual": "approach-detail",
+      "visual_config": { "approach_id": "edit-fingerprint-heatmap" },
+      "caption": "Where attention is concentrated",
+      "text": "The Edit Fingerprint Heatmap is a presentation layer. Every time the Builder touches a file, the touch is logged. Over time, a heat pattern emerges showing which parts of the codebase are receiving the most attention. The hottest spots tell you where to focus drift detection."
+    },
+    {
+      "id": "16",
+      "title": "Symbiotic Chain Evals",
+      "audio_file": "audio/learn/16.mp3",
+      "visual": "approach-detail",
+      "visual_config": { "approach_id": "symbiotic-chain-evals" },
+      "caption": "Evals that live next to the code",
+      "text": "The Symbiotic Chain Evals approach scaffolds per-project eval scripts that live next to the code and grow as the project grows. Each eval checks one transition. Schema to migration. Route to OpenAPI. Endpoint to documentation. As new patterns emerge, new evals scaffold alongside them."
+    },
+    {
+      "id": "17",
+      "title": "Commit-Narrative Spine",
+      "audio_file": "audio/learn/17.mp3",
+      "visual": "approach-detail",
+      "visual_config": { "approach_id": "commit-narrative-spine" },
+      "caption": "Commits as the authoritative record",
+      "text": "The Commit-Narrative Spine treats git commits as the authoritative narrative. Each commit lists which chain links were touched. Coverage accumulates across commits. You can see at a glance which links a commit named and which it skipped."
+    },
+    {
+      "id": "18",
+      "title": "Per-File Dependency Manifest",
+      "audio_file": "audio/learn/18.mp3",
+      "visual": "approach-detail",
+      "visual_config": { "approach_id": "per-file-dependency-manifest" },
+      "caption": "Every file knows its neighbours",
+      "text": "The Per-File Dependency Manifest gives every file a sidecar describing its upstream sources and downstream consumers. When the focus file is edited, the manifest checks each connection. Stale connections show up immediately. The visual is a tree centred on the focus file."
+    },
+    {
+      "id": "19",
+      "title": "Stop-Hook Drift Sweep",
+      "audio_file": "audio/learn/19.mp3",
+      "visual": "approach-detail",
+      "visual_config": { "approach_id": "stop-hook-drift-sweep" },
+      "caption": "End-of-turn health check",
+      "text": "The Stop-Hook Drift Sweep runs at the end of every turn. It compares the current state of the chain against a baseline and reports per-link health. The pills across the top show clean, warning, or block-worthy. The history rows below show how the sweep has trended."
+    },
+    {
+      "id": "20",
+      "title": "Chain Layered Tile Board",
+      "audio_file": "audio/learn/20.mp3",
+      "visual": "approach-detail",
+      "visual_config": { "approach_id": "chain-layered-tile-board" },
+      "caption": "The dashboard surface",
+      "text": "The Chain Layered Tile Board is a presentation surface. It overlays whichever detector signal you choose on a grid of features by chain links. A dashboard view of the whole project at once."
+    },
+    {
+      "id": "21",
+      "title": "The topology",
+      "audio_file": "audio/learn/21.mp3",
+      "visual": "topology-architecture",
+      "caption": "Observers around the Builder",
+      "text": "Now the topology. The Anti-Drift system sits outside the project. The Builder agent stays focused on application code. One or more observer harnesses run as separate Claude Code sessions, watching the project from the outside. They drop tickets into a shared folder."
+    },
+    {
+      "id": "22",
+      "title": "Anti-Drift Board",
+      "audio_file": "audio/learn/22.mp3",
+      "visual": "anti-drift-board",
+      "caption": "Features by chain, Builder and Anti-Drift in motion",
+      "text": "Here you can see the Anti-Drift Board in action. Rows are features in the application. Columns are the fourteen chain links. The Builder LLM edits cells fast. Every five turns, the Anti-Drift agent sweeps the board, reads the eval evidence, and drops tickets where the chain is weakening. The Anti-Drift agent never touches application code."
+    },
+    {
+      "id": "23",
+      "title": "The ticket bus",
+      "audio_file": "audio/learn/23.mp3",
+      "visual": "ticket-schema",
+      "caption": "The bus is a folder",
+      "text": "The bus is a folder. No daemon, no broker. Each observer writes ticket files into the project's tickets folder. The Builder reads them at session start and turn boundaries. Adding a new concern is a new sibling directory, not an edit to the Builder's instructions."
+    },
+    {
+      "id": "24",
+      "title": "Code freeze and burn down",
+      "audio_file": "audio/learn/24.mp3",
+      "visual": "burn-down-sim",
+      "caption": "Pause observers while the Builder drains",
+      "text": "The last piece is workflow management. Once the ticket queue hits the freeze threshold, the Builder stops shipping new code and drains the backlog. The observers stand down for the duration of the freeze. Without that pause, every fix would risk triggering a new ticket and the queue would never empty. Once the queue clears, observers re-arm and the Builder resumes."
+    },
+    {
+      "id": "25",
+      "title": "Putting it together",
+      "audio_file": "audio/learn/25.mp3",
+      "visual": "title",
+      "caption": "Anti-Drift Harness",
+      "subcaption": "Pick a detector. Pick a surface. Scaffold the evals. Let the loop run.",
+      "text": "That's the Anti-Drift Harness. Seven approaches you can mix, an observer topology that keeps the Builder's context clean, a ticket flow that respects the Builder's attention. Pick a detector, pick a surface, scaffold the evals alongside the code, and you have a self-healing system. Thanks for watching. Take a look at the rest of the site for the full inventory."
+    }
+  ]
+}
