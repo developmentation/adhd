@@ -334,8 +334,18 @@
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3 sm:gap-4">
           <template v-for="card in data.meta.problem_statement.cards" :key="card.label">
 
-            <!-- Card 01: Practice (intro) -->
-            <article v-if="card.kind === 'intro'" class="lg:col-span-2 relative rounded-2xl border border-black/10 bg-white/70 p-5 sm:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] overflow-hidden">
+            <!-- Card 01: Premise (full-width intro narrative) -->
+            <article v-if="card.kind === 'premise'" class="sm:col-span-2 lg:col-span-6 relative rounded-2xl border border-[#ff5a24]/25 p-5 sm:p-7 lg:p-9 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] overflow-hidden"
+              style="background: linear-gradient(135deg, rgba(255,255,255,0.95) 0%, rgba(255,243,234,0.85) 55%, rgba(255,255,255,0.75) 100%);">
+              <div class="corner-tr"></div>
+              <div class="absolute bottom-0 right-0 h-24 w-24 hatch opacity-30 pointer-events-none"></div>
+              <p class="text-[0.65rem] uppercase tracking-wider text-[#ff5a24] font-medium">{{ card.label }}</p>
+              <h3 class="serif text-2xl sm:text-3xl lg:text-4xl text-black mt-2 mb-4 leading-[1.1] max-w-3xl">{{ card.title }}</h3>
+              <p class="text-base sm:text-lg lg:text-[1.15rem] text-[#252525] leading-relaxed max-w-4xl">{{ card.body }}</p>
+            </article>
+
+            <!-- Card 02: Practice (intro) -->
+            <article v-else-if="card.kind === 'intro'" class="lg:col-span-2 relative rounded-2xl border border-black/10 bg-white/70 p-5 sm:p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.6)] overflow-hidden">
               <div class="corner-tr"></div>
               <p class="text-[0.65rem] uppercase tracking-wider text-[#ff5a24] font-medium">{{ card.label }}</p>
               <h3 class="serif text-xl sm:text-2xl text-black mt-2 mb-3 leading-tight">{{ card.title }}</h3>

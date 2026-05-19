@@ -38,14 +38,20 @@
       "title": "Where drift starts and how it spreads",
       "cards": [
         {
+          "kind": "premise",
+          "label": "01 · Premise",
+          "title": "Coding agents ship great work, until the codebase grows",
+          "body": "With clear standards and good prompting practices, teams using Claude Code and other coding agents move at a remarkable pace. The catch arrives as the codebase grows through refactor after refactor. Parts of the code start to drift out of sync with each other. The chain of relationships between requirements, schema, code, tests, and documentation begins to break. The agents are still doing their job on each individual change, but the project as a whole starts to erode under its own changes. This site is about that gap and what to do about it."
+        },
+        {
           "kind": "intro",
-          "label": "01 · Practice",
+          "label": "02 · Practice",
           "title": "I pause every three to five turns",
           "body": "Part of working effectively with AI every day is pausing on a cadence to push the Claude Code agent to check for drift across the README, the OpenAPI spec, the routes, the testing coverage, and the evals. A four-team scan also runs on demand (red, green, blue, yellow, catalogued in CHECKS.md)."
         },
         {
           "kind": "stat",
-          "label": "02 · The gap",
+          "label": "03 · The gap",
           "title": "Functional is not the same as well structured",
           "stats": [
             { "value": "97-99%", "label": "functionally correct" },
@@ -56,20 +62,20 @@
         },
         {
           "kind": "chain",
-          "label": "03 · The chain",
+          "label": "04 · The chain",
           "title": "Fourteen links from requirements to training",
           "body": "When the model edits one link, it usually touches the one or two direct neighbours, then stops. Later, when work resumes elsewhere, the model reads the now-stale neighbours as ground truth and rebuilds against them. The chain breaks further. Drop a field from the database, and the same field has to move through the UI, the DDL, the training docs, and the change-management notes. Most of the time it does not."
         },
         {
           "kind": "proposal",
-          "label": "04 · The proposal",
+          "label": "05 · The proposal",
           "title": "Seven approaches plus an observer pattern",
           "body": "Claude skills, hooks, and harness configurations that catch drift in the loop, not as a post-hoc audit. Around the seven, an external observer pattern: the Builder agent stays focused on application code while one or more Anti-Drift harnesses run as separate Claude Code sessions outside the project. They watch the filesystem (via an external script, not the FileChanged hook), run their checks, and drop tickets into the project's .tickets/ folder.",
           "chips": ["chain walker", "fingerprint heatmap", "symbiotic evals", "commit narrative", "per-file manifest", "stop-hook sweep", "tile board"]
         },
         {
           "kind": "feature",
-          "label": "05 · Anti-Drift role",
+          "label": "06 · Anti-Drift role",
           "title": "Air traffic control, not a builder",
           "body": "The Anti-Drift agent does not touch application code. It watches the Builder across the chain, reads the deterministic eval evidence, validates against the code, and decides whether to file a ticket. Drift spreads horizontally along one feature chain and vertically across feature chains. The agent catches both. It runs at a slower cadence than the Builder, on the order of every five turns. Faster than that and the stream of tickets stalls forward momentum."
         }
